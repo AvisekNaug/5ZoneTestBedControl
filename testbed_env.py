@@ -1,5 +1,7 @@
 """
-This script will act as an interface between custom 'Buildings.Examples VAVReheat.*' FMU for the 5 Zone System and a reinforcement learning agent. It will implement the standard methods needed for the gym.env class.
+This script will act as an interface between custom 'Buildings.Examples VAVReheat.*' FMU for the 5
+Zone System and a reinforcement learning agent. It will implement the standard methods needed for
+the gym.env class.
 """
 
 # imports
@@ -9,7 +11,8 @@ from pyfmi.fmi import FMUModelCS2, FMUModelCS1  # pylint: disable=no-name-in-mod
 
 class testbed(gym.Env):
 	"""
-	The class which will interface between custom 'Buildings.Examples VAVReheat.*' FMU for the 5 Zone System and a reinforcement learning agent
+	The class which will interface between custom 'Buildings.Examples VAVReheat.*' FMU for the 5
+	 Zone System and a reinforcement learning agent
 	"""
 	def __init__(self, *args, **kwargs):
 
