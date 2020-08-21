@@ -17,9 +17,8 @@ class testbed(gym.Env):
 	def __init__(self, *args, **kwargs):
 
 		# path to fmu
-		fmu_path : str = kwargs['fmu_path']
-		# load the fmu
-		self.fmu_model : FMUModelCS2 = load_fmu(fmu_path, kind='CS')
+		fmu_path : str = kwargs['fmu']
+		self._load_fmu(**{'fmu':fmu_path, 'kind':'CS'})
 
 	def reset(self, *args, **kwargs):
 		
@@ -30,6 +29,21 @@ class testbed(gym.Env):
 		# process the action if needed
 		action = self.action_processor(action)
 		
+	# Extra processes needed for this environment
 	def action_processor(self, a):
 
 		raise NotImplementedError
+
+	def load_fmu(self, *args, **kwargs):
+
+		assert 'fmu' in kwargs.keys(), 'Pass fmu path using "fmu" argument'
+		if 'kind' not in kwargs.keys():
+			kwargs.update({'kind':'CS'})
+		else:
+			assert kwargs['kind']=='CS', 'Models can only be loaded in Co-simulation model, use kind="CS"'
+		self._load_fmu(**kwargs)
+
+	def _load_fmu(self,*args,**kwargs):
+
+		# load the fmu
+		self.fmu_model : FMUModelCS2 = load_fmu(**kwargs)
