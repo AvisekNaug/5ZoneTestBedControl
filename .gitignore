@@ -1,0 +1,7 @@
+# extensions
+.pyc
+.ipynb_checkpoints
+./vscode
+.pyc
+__pycache__
+*.out
