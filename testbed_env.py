@@ -6,6 +6,7 @@ the gym.env class.
 
 # imports
 import numpy as np
+from json import load as jsonload
 
 import gym
 from gym import spaces
@@ -21,10 +22,12 @@ class testbed(gym.Env):
 
 		# path to fmu
 		fmu_path : str = kwargs['fmu']
+		# path to fmu model variables
+		fmu_vars_path : str = kwargs['fmu_variables_path']
 		# observation variables
-		obs_vars : list[str] = kwargs['observed_variables']
+		self.obs_vars : list[str] = kwargs['observed_variables']
 		# action variables
-		act_vars : list[str] = kwargs['action_variables']
+		self.act_vars : list[str] = kwargs['action_variables']
 		# observation space bounds
 		obs_space_bounds : list[list] = kwargs['observation_space_bounds']
 		# observation space bounds
@@ -34,6 +37,12 @@ class testbed(gym.Env):
 
 
 		'''methods to perform to set up the environment'''
+		
+		# load model variables
+		self.load_fmu_vars(fmu_vars_path)
+		# check membership of observation and action space
+		all_vars_present, absent_vars = self.variables_in_fmu(self.obs_vars+self.act_vars)
+		assert all_vars_present, "There are missing variables in the FMU:{}".format(absent_vars)
 
 		# load the fmu
 		self._load_fmu(**{'fmu':fmu_path, 'kind':'CS'})
@@ -54,11 +63,18 @@ class testbed(gym.Env):
 
 		# determine whether the first reset has been called once or not
 		self.first_reset = True
+		# current fmu_time
+		# self.fmu_time = self.fmu_model.time
 
 	def reset(self, *args, **kwargs):
 		
+		# reset the fmu
+		self.fmu.reset()
+
 		if  self.first_reset:
-			obs = self.fmu_model.get_fmu_state()  # TODO: how to parse necessart obs from this
+			# initialize the fmu to t=0
+			self.fmu.initialize()
+			obs = self.fmu.get_fmu_state()  # TODO: how to parse necessart obs from this
 		'''Standard requirements for interfacing with gym environments'''
 		self.steps_beyond_done = None
 
@@ -91,4 +107,19 @@ class testbed(gym.Env):
 	def _load_fmu(self,*args,**kwargs):
 
 		# load the fmu
-		self.fmu_model : FMUModelCS2 = load_fmu(**kwargs)
+		self.fmu : FMUModelCS2 = load_fmu(**kwargs)
+
+	def variables_in_fmu(self, vars: list):
+		"""
+		Assert whether the variable names in var are part of the fmu model variables
+		"""
+		membership = [var in self.fmu_var_names for var in vars]
+		absent_vars = [var for var , member in zip(vars, membership) if not member]
+		return not all(membership), absent_vars
+
+
+	def load_fmu_vars(self, fmu_vars_path):
+		with open(fmu_vars_path, 'r') as f: 
+			self.fmu_var_names = jsonload(f).keys()
+		f.close()
+
