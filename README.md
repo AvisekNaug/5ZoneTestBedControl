@@ -7,3 +7,8 @@ This repository will be used to develop and contain all the code needed for the 
 * have to verify --> can changing start time after issuing 
 * values like time and weather cannot be changed using set method from outside
 * states are a part of the system model_variables
+
+## TODO
+
+* decide how to set ncp
+* reset to 0 if weater file exhausted ie find default end time of the simulation
