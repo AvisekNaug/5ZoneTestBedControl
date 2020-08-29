@@ -30,22 +30,16 @@ class testbed(gym.Env):
 		self.act_vars : list[str] = kwargs['action_variables']
 		# observation space bounds
 		obs_space_bounds : list[list] = kwargs['observation_space_bounds']
-		# observation space bounds
-		obs_space_bounds : list[list] = kwargs['observation_space_bounds']
 		# action space bounds
 		action_space_bounds : list[list] = kwargs['action_space_bounds']
-		# fmu simulation start time
-		self.fmu_start_time = kwargs['fmu_start_time']
 		# time delta in seconds to advance simulation for every step
-		self.simulation_time_delta_s = kwargs['simulation_time_delta_s']
-		# total time allowed on the fmu
-		self.total_fmu_time_available = kwargs['total_fmu_time_available']
-		# period of sampling in terms of 5 min chuncks
-		self.period = kwargs['period']
+		self.step_size = kwargs['step_size']
+
+		# initialize start time and global end time
+		self.re_init(**{'fmu_start_time':kwargs['fmu_start_time'], 'global_fmu_end_time' : kwargs['global_fmu_end_time']})
 
 		# simulation time elapsed
 		self.simulation_time_elapsed = 0.0
-
 
 		'''methods to set up the environment'''
 		# load model variable names into a json
@@ -70,27 +64,34 @@ class testbed(gym.Env):
 										high = np.array(action_space_bounds[1]),
 										dtype = np.float32)
 
-		# determine whether the first reset has been called once or not
+	def re_init(self, *args, **kwargs):
+		"""
+		This method exists to change the start time for the fmu during relearning"""
+		# fmu simulation start time
+		self.fmu_start_time = kwargs['fmu_start_time']
+		# global_fmu_end_time : time used to end the simulation for fmu: need not be actual end of the weather file
+		self.global_fmu_end_time = kwargs['global_fmu_end_time']
+		# determine whether the first reset needs to be called once or not
 		self.global_fmu_reset = True
+
 
 	def reset(self, *args, **kwargs):
 		
-		# new fmu_start_time
-		# TODO: reset to 0 if weater file exhausted ie find default end time of the simulation
-		self.fmu_start_time += self.simulation_time_elapsed
+		if self.global_fmu_reset: #don't advance simulaiton on fmu any further on actual time
+			# Reset start_time to fmu_start_time
+			self.start_time = self.fmu_start_time
+			# reset the fmu
+			self.fmu.reset()
+			# initialize the fmu to t = start_time
+			self.fmu.initialize(start_time = self.start_time, stop_time_defined = False)
+			# set self.global_fmu_reset to False
+			self.global_fmu_reset = False
+		
 		# simulation time elapsed
 		self.simulation_time_elapsed = 0.0
-
-		# reset the fmu
-		self.fmu.reset()
-		# initialize the fmu to t = fmu_start_time
-		self.fmu.initialize(start_time = self.fmu_start_time, stop_time_defined = False)
-		# do not reinitialize simulation from now on and TODO: decide how to set ncp
-		self.opts = self.fmu.simulate_options()
-		self.opts['initialize'] = False
-		self.opts['ncp']= self.period
 		# get current value of observation variables
-		self.obs : list = self.fmu.get(self.obs_vars)
+		self.obs : list = [i[0] for i in self.fmu.get(variable_name=self.obs_vars)]
+
 		# Standard requirements for interfacing with gym environments
 		self.steps_beyond_done = None
 
@@ -99,7 +100,7 @@ class testbed(gym.Env):
 	def step(self, action):
 		
 		# process the action from the agent before sending it to the fmu
-		action = self.action_processor(action)
+		action : list = self.action_processor(action)
 
 		# perform state transition and get next state observation
 		self.obs_next = self.state_transition(self.obs, action)
@@ -111,13 +112,21 @@ class testbed(gym.Env):
 		self.log_info(info_dict)
 
 		# advance simulation and check for episode completion
-		self.simulation_time_elapsed += self.simulation_time_delta_s
-		done = self.check_done(self.simulation_time_elapsed)
+		self.start_time += self.step_size
+		self.simulation_time_elapsed += self.step_size
+		done = self.check_done(self.start_time, self.simulation_time_elapsed)
 
 		# process the observation before sending it to the agent
 		obs_next_processed : np.array = self.obs_processor(self.obs_next)
 
 		return obs_next_processed, reward, done, {}
+
+	# Process the action
+	def action_processor(self, a):
+		"""
+		TODO: Inverse scale the action from the agent
+		"""
+		raise NotImplementedError
 
 	# Calculate the observations for the next state of the system
 	def state_transition(self, obs, action):
@@ -129,39 +138,47 @@ class testbed(gym.Env):
 			pass
 		else:
 			raise TypeError
+
 		# set input to the action variables
 		self.fmu.set(variable_name=self.act_vars, value=action)
 		# simulate the system
-		self.sim_result = self.fmu.simulate(start_time = self.fmu_start_time,
-								final_time = self.fmu_start_time +  self.simulation_time_delta_s,
-								options = self.opts)
+		self.simulation_status = self.fmu.do_step(current_t = self.start_time,
+								step_size = self.step_size, new_step=True)
+		if self.simulation_status!=0: 
+			print("Something wrong with the Simulation: {}".format(self.simulation_status))
 		# get the observation variables
-		obs_next : list = self.fmu.get(variable_name=self.obs_vars)
+		obs_next : list = [i[0] for i in self.fmu.get(variable_name=self.obs_vars)]
 
-		return obs_next
+		return np.array(obs_next)
+
+	# calculate reward and other info
+	def calculate_reward_and_info(self, obs, action, obs_next):
+
+
+
+		raise NotImplementedError
+
+	# log info_dict
+	def log_info(self, info_dict):
+
+		raise NotImplementedError
+
+	# check if episode has completed
+	def check_done(self, start_time, time_elapsed):
+
+		"""
+		If the number of seconds is greater than a week, terminate the episode
+		"""
+		if start_time>self.global_fmu_end_time-self.step_size: # won't be able to do a full step
+			self.global_fmu_reset = True
+		return (time_elapsed>=float(3600*24*7)) | self.global_fmu_reset
 
 	# Process the observation
 	def obs_processor(self, obs):
 
 		raise NotImplementedError
-		
-	# Process the action
-	def action_processor(self, a):
 
-		raise NotImplementedError
 
-	# check if episode has completed
-	def check_done(self, time_elapsed):
-
-		"""
-		If the number of seconds is greater than a week, terminate the episode
-		"""
-		return time_elapsed>=float(3600*24*7)
-
-	# calculate reward and other info
-	def calculate_reward_and_info(self, obs, action, obs_next):
-
-		raise NotImplementedError
 
 	# public access method to load fmu
 	def load_fmu(self, *args, **kwargs):
@@ -173,11 +190,13 @@ class testbed(gym.Env):
 			assert kwargs['kind']=='CS', 'Models can only be loaded in Co-simulation model, use kind="CS"'
 		self._load_fmu(**kwargs)
 
+
 	# internal method to load fmu
 	def _load_fmu(self,*args,**kwargs):
 
 		# load the fmu
 		self.fmu : FMUModelCS2 = load_fmu(**kwargs)
+
 
 	# check whether all the variables are in an fmu model variable dicitonary keys
 	def variables_in_fmu(self, vars: list):
@@ -194,9 +213,4 @@ class testbed(gym.Env):
 		with open(fmu_vars_path, 'r') as f: 
 			self.fmu_var_names = jsonload(f).keys()
 		f.close()
-
-	# log info_dict
-	def log_info(self, info_dict):
-
-		raise NotImplementedError
 
