@@ -13,17 +13,13 @@ from gym import spaces
 from pyfmi import load_fmu
 from pyfmi.fmi import FMUModelCS2, FMUModelCS1  # pylint: disable=no-name-in-module
 
-class testbed(gym.Env):
+class testbed_base(gym.Env):
 	"""
 	The class which will interface between custom 'Buildings.Examples VAVReheat.*' FMU for the 5
 	 Zone System and a reinforcement learning agent
 	"""
 	def __init__(self, *args, **kwargs):
 
-		# path to fmu
-		fmu_path : str = kwargs['fmu']
-		# path to fmu model variables
-		fmu_vars_path : str = kwargs['fmu_variables_path']
 		# observation variables
 		self.obs_vars : list[str] = kwargs['observed_variables']
 		# action variables
@@ -34,6 +30,10 @@ class testbed(gym.Env):
 		action_space_bounds : list[list] = kwargs['action_space_bounds']
 		# time delta in seconds to advance simulation for every step
 		self.step_size = kwargs['step_size']
+		# path to fmu
+		fmu_path : str = kwargs['fmu']
+		# path to fmu model variables
+		fmu_vars_path : str = kwargs['fmu_variables_path']
 
 		# initialize start time and global end time
 		self.re_init(**{'fmu_start_time':kwargs['fmu_start_time'], 'global_fmu_end_time' : kwargs['global_fmu_end_time']})
@@ -90,20 +90,20 @@ class testbed(gym.Env):
 		# simulation time elapsed
 		self.simulation_time_elapsed = 0.0
 		# get current value of observation variables
-		self.obs : list = [i[0] for i in self.fmu.get(variable_name=self.obs_vars)]
+		self.obs : np.array = np.array([i[0] for i in self.fmu.get(variable_name=self.obs_vars)])
 
 		# Standard requirements for interfacing with gym environments
 		self.steps_beyond_done = None
 
-		return np.array(self.obs)
+		return self.obs
 
 	def step(self, action):
 		
 		# process the action from the agent before sending it to the fmu
-		action : list = self.action_processor(action)
+		action : np.array = self.action_processor(action)
 
 		# perform state transition and get next state observation
-		self.obs_next = self.state_transition(self.obs, action)
+		self.obs_next : np.array = self.state_transition(self.obs, action)
 
 		# calculate reward and other info
 		reward, info_dict = self.calculate_reward_and_info(self.obs, action, self.obs_next)
@@ -154,8 +154,6 @@ class testbed(gym.Env):
 	# calculate reward and other info
 	def calculate_reward_and_info(self, obs, action, obs_next):
 
-
-
 		raise NotImplementedError
 
 	# log info_dict
@@ -167,7 +165,8 @@ class testbed(gym.Env):
 	def check_done(self, start_time, time_elapsed):
 
 		"""
-		If the number of seconds is greater than a week, terminate the episode
+		If the number of seconds is greater than a week, terminate the episode. Also do a fmu reset
+		if the next stepsize cannot be accomodated in the simulation
 		"""
 		if start_time>self.global_fmu_end_time-self.step_size: # won't be able to do a full step
 			self.global_fmu_reset = True
@@ -187,7 +186,7 @@ class testbed(gym.Env):
 		if 'kind' not in kwargs.keys():
 			kwargs.update({'kind':'CS'})
 		else:
-			assert kwargs['kind']=='CS', 'Models can only be loaded in Co-simulation model, use kind="CS"'
+			assert kwargs['kind']=='CS', 'Models can only be loaded in Co-simulation model, use kind : "CS"'
 		self._load_fmu(**kwargs)
 
 
@@ -214,3 +213,20 @@ class testbed(gym.Env):
 			self.fmu_var_names = jsonload(f).keys()
 		f.close()
 
+
+class testbed_v1(testbed_base):
+	"""
+	Inherits the base testbed class but with different action nad observation processor, different
+	logging strategy and different reward calculation method
+	"""
+
+	def __init__(self, *args, **kwargs):
+		super().__init__(*args, **kwargs)
+
+	# calculate reward and other info
+	def calculate_reward_and_info(self, obs, action, obs_next):
+		"""
+		In this version we will try to incentivize lower energy consumption and better comfort
+		by lowering deviation between room temperature and set point
+		"""
+		
