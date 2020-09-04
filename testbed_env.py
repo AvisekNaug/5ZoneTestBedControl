@@ -15,7 +15,7 @@ from pyfmi.fmi import FMUModelCS2, FMUModelCS1  # pylint: disable=no-name-in-mod
 
 class testbed_base(gym.Env):
 	"""
-	The class which will interface between custom 'Buildings.Examples VAVReheat.*' FMU for the 5
+	The base class which will interface between custom 'Buildings.Examples VAVReheat.*' FMU for the 5
 	 Zone System and a reinforcement learning agent
 	"""
 	def __init__(self, *args, **kwargs):
@@ -64,6 +64,7 @@ class testbed_base(gym.Env):
 										high = np.array(action_space_bounds[1]),
 										dtype = np.float32)
 
+
 	def re_init(self, *args, **kwargs):
 		"""
 		This method exists to change the start time for the fmu during relearning"""
@@ -97,6 +98,7 @@ class testbed_base(gym.Env):
 
 		return self.obs
 
+
 	def step(self, action):
 		
 		# process the action from the agent before sending it to the fmu
@@ -121,6 +123,7 @@ class testbed_base(gym.Env):
 
 		return obs_next_processed, reward, done, {}
 
+
 	# Process the action
 	def action_processor(self, a):
 		"""
@@ -128,11 +131,12 @@ class testbed_base(gym.Env):
 		"""
 		raise NotImplementedError
 
+
 	# Calculate the observations for the next state of the system
 	def state_transition(self, obs, action):
 
 		# check input type
-		if isinstance(action,np.ndarray):
+		if isinstance(action,np.array):
 			action = list(action)
 		elif isinstance(action, list):
 			pass
@@ -151,15 +155,18 @@ class testbed_base(gym.Env):
 
 		return np.array(obs_next)
 
+
 	# calculate reward and other info
 	def calculate_reward_and_info(self, obs, action, obs_next):
 
 		raise NotImplementedError
 
+
 	# log info_dict
 	def log_info(self, info_dict):
 
 		raise NotImplementedError
+
 
 	# check if episode has completed
 	def check_done(self, start_time, time_elapsed):
@@ -172,11 +179,11 @@ class testbed_base(gym.Env):
 			self.global_fmu_reset = True
 		return (time_elapsed>=float(3600*24*7)) | self.global_fmu_reset
 
+
 	# Process the observation
 	def obs_processor(self, obs):
 
 		raise NotImplementedError
-
 
 
 	# public access method to load fmu
@@ -188,6 +195,7 @@ class testbed_base(gym.Env):
 		else:
 			assert kwargs['kind']=='CS', 'Models can only be loaded in Co-simulation model, use kind : "CS"'
 		self._load_fmu(**kwargs)
+
 
 
 	# internal method to load fmu
@@ -213,20 +221,52 @@ class testbed_base(gym.Env):
 			self.fmu_var_names = jsonload(f).keys()
 		f.close()
 
-
-class testbed_v1(testbed_base):
+# Example of one testbed where we control only the AHU heating coil.
+class testbed_v0(testbed_base):
 	"""
-	Inherits the base testbed class but with different action nad observation processor, different
-	logging strategy and different reward calculation method
+	Inherits the base testbed class. This version has the following characteristics
+
+	1. Receives the delta changes in AHU set point for AHU heating coil and creates 
+	the resultant heating coil set point using action_processor.
+
+	2. 0-1 Scales the set of "observed_variables" before sending it back to the agent
+	using the obs_processor method. Must include a method which knows the upper and 
+	lower bounds for each of the observed variables
+
+	3. In this version we will try to incentivize lower energy consumption and better 
+	comfort.
+
 	"""
 
 	def __init__(self, *args, **kwargs):
 		super().__init__(*args, **kwargs)
+		self.params = kwargs['testbed_v0_params']
+		self.ahu_stpt = np.array(self.params['initial_ahu_stpt'])
+		self.ahu_heat_stpt_ub = np.array(self.params['ahu_heat_stpt_ub'])
+		self.ahu_heat_stpt_lb = np.array(self.params['ahu_heat_stpt_lb'])
+		self.obs_vars_max : np.array = np.array(self.params['obs_vars_max'])
+		self.obs_vars_min : np.array = np.array(self.params['obs_vars_min'])
+
+	# Process the action
+	def action_processor(self, a):
+		"""
+		Receives the positive / negative change in the heating set point. Will be used to 
+		decide the actual heating set point.
+		"""
+		self.ahu_stpt += a
+		self.ahu_stpt = np.clip(self.ahu_stpt, self.ahu_heat_stpt_lb, self.ahu_heat_stpt_ub)
+		return self.ahu_stpt
+
+	# Process the observation
+	def obs_processor(self, obs : np.array):
+		"""
+		Scale the observations to 0-1 range 
+		"""
+		return (obs-self.obs_vars_min)/(self.obs_vars_max-self.obs_vars_min)
+
 
 	# calculate reward and other info
 	def calculate_reward_and_info(self, obs, action, obs_next):
-		"""
-		In this version we will try to incentivize lower energy consumption and better comfort
-		by lowering deviation between room temperature and set point
-		"""
+		pass
+
 		
