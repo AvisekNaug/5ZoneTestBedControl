@@ -13,6 +13,8 @@ from gym import spaces
 from pyfmi import load_fmu
 from pyfmi.fmi import FMUModelCS2, FMUModelCS1  # pylint: disable=no-name-in-module
 
+from testbed_utils import dataframescaler
+
 class testbed_base(gym.Env):
 	"""
 	The base class which will interface between custom 'Buildings.Examples VAVReheat.*' FMU for the 5
@@ -113,13 +115,16 @@ class testbed_base(gym.Env):
 		# log the info_dict for our purpose
 		self.log_info(info_dict)
 
-		# advance simulation and check for episode completion
+		# process the observation before sending it to the agent
+		obs_next_processed : np.array = self.obs_processor(self.obs_next)
+
+		# assign obs_next to obs
+		self.obs = self.obs_next
+
+		# advance simulation time and check for episode completion
 		self.start_time += self.step_size
 		self.simulation_time_elapsed += self.step_size
 		done = self.check_done(self.start_time, self.simulation_time_elapsed)
-
-		# process the observation before sending it to the agent
-		obs_next_processed : np.array = self.obs_processor(self.obs_next)
 
 		return obs_next_processed, reward, done, {}
 
@@ -244,8 +249,7 @@ class testbed_v0(testbed_base):
 		self.ahu_stpt = np.array(self.params['initial_ahu_stpt'])
 		self.ahu_heat_stpt_ub = np.array(self.params['ahu_heat_stpt_ub'])
 		self.ahu_heat_stpt_lb = np.array(self.params['ahu_heat_stpt_lb'])
-		self.obs_vars_max : np.array = np.array(self.params['obs_vars_max'])
-		self.obs_vars_min : np.array = np.array(self.params['obs_vars_min'])
+		self.scaler : dataframescaler = self.params['scaler']
 
 	# Process the action
 	def action_processor(self, a):
@@ -262,11 +266,31 @@ class testbed_v0(testbed_base):
 		"""
 		Scale the observations to 0-1 range 
 		"""
-		return (obs-self.obs_vars_min)/(self.obs_vars_max-self.obs_vars_min)
+		return self.scaler.minmax_scale(obs, input_columns= self.obs_vars,
+											 df_2scale_columns= self.obs_vars)
 
 
 	# calculate reward and other info
 	def calculate_reward_and_info(self, obs, action, obs_next):
-		pass
+		"""
+		Here we will get the power consumsed over the last 1 hour- initially use only this
+		Also use the deviation between the room temperature and set point during day time
+		"""
+		
+		power_variables = ['res.PFan', 'res.PHea', 'res.PCooSen', 'res.PCooLat']
+		power_sign = [1.0, 1.0, -1.0, -1.0]
+		# * Here 'res.PCooSen','res.PCooLat' will be negative so we have to negate the values *
+		power_values = [i[0]*j for i,j in zip(self.fmu.get(variable_name=power_variables),power_sign)]
+		# reward incentivizes lower energy; reward lower energy
+		r_energy = -1.0*np.sum(np.array(power_values))[0]
 
+		info = {}
+		info['reward'] = r_energy
+		info['action'] = action[0]
+		for name,val in zip(power_variables, power_values):
+			info[name] = val
+		for name, val in zip(self.obs_vars, obs):
+			info[name] = val
+		
+		return r_energy, info
 		
