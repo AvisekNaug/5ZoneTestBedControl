@@ -26,7 +26,7 @@ We created a simple testbed `testbed_v0` where we use `ambient temperature, humi
 
 A complete description of all possible variables that can be treated as part of the observation space or action space is provided [here](https://github.com/AvisekNaug/5ZoneTestBedControl/blob/master/RLPPOV1_get_model_variables.json).
 
-[plt](demo_plot.png)
+![plt](demo_plot.png)
 
 # Requirements
 * Compiled FMU - We are using fmus compiled in Jmodelica
