@@ -13,8 +13,6 @@ from gym import spaces
 from pyfmi import load_fmu
 from pyfmi.fmi import FMUModelCS2, FMUModelCS1  # pylint: disable=no-name-in-module
 
-from testbed_utils import dataframescaler
-
 class testbed_base(gym.Env):
 	"""
 	The base class which will interface between custom 'Buildings.Examples VAVReheat.*' FMU for the 5
@@ -244,6 +242,7 @@ class testbed_v0(testbed_base):
 	"""
 
 	def __init__(self, *args, **kwargs):
+		from testbed_utils import dataframescaler
 		super().__init__(*args, **kwargs)
 		self.params = kwargs['testbed_v0_params']
 		self.ahu_stpt = np.array(self.params['initial_ahu_stpt'])
