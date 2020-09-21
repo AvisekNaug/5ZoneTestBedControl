@@ -840,10 +840,12 @@ def rl_perf_save(test_perf_log_list: list, log_dir: str, save_as: str = 'csv', h
 
 			if save_as == 'csv':
 				df = pd.DataFrame(data=episode_dict)
-				df.to_csv(log_dir+'EnvId{}-results.csv'.format(idx), index=False, mode='a+', header=header)
+				df.to_csv(log_dir+'results.csv', index=False, mode='a+', header=header)
+				header = False
 			else:
 				for key, value in episode_dict.items():
 					f = open(log_dir + 'EnvId{}-'.format(idx) + key + '.txt', 'a+')
 					f.writelines("%s\n" % j for j in value)
 					f.close()
+				header = False
 

@@ -7,6 +7,7 @@ the gym.env class.
 # imports
 import numpy as np
 from json import load as jsonload
+from typing import List
 
 import gym
 from gym import spaces
@@ -21,22 +22,22 @@ class testbed_base(gym.Env):
 	def __init__(self, *args, **kwargs):
 
 		# observation variables
-		self.obs_vars : list[str] = kwargs['observed_variables']
+		self.obs_vars : List[str] = kwargs['observed_variables']
 		# action variables
-		self.act_vars : list[str] = kwargs['action_variables']
+		self.act_vars : List[str] = kwargs['action_variables']
 		# observation space bounds
-		obs_space_bounds : list[list] = kwargs['observation_space_bounds']
+		obs_space_bounds : List[List] = kwargs['observation_space_bounds']
 		# action space bounds
-		action_space_bounds : list[list] = kwargs['action_space_bounds']
+		action_space_bounds : List[List] = kwargs['action_space_bounds']
 		# time delta in seconds to advance simulation for every step
 		self.step_size = kwargs['step_size']
 		# path to fmu
 		fmu_path : str = kwargs['fmu']
 		# path to fmu model variables
-		fmu_vars_path : str = kwargs['fmu_variables_path']
+		fmu_vars_path : str = kwargs['fmu_vars_path']
 
 		# initialize start time and global end time
-		self.re_init(**{'fmu_start_time':kwargs['fmu_start_time'], 'global_fmu_end_time' : kwargs['global_fmu_end_time']})
+		self.re_init(**{'fmu_start_time':kwargs['fmu_start_time_step'], 'global_fmu_end_time' : kwargs['global_fmu_end_time_step']})
 
 		# simulation time elapsed
 		self.simulation_time_elapsed = 0.0
@@ -76,7 +77,7 @@ class testbed_base(gym.Env):
 		self.global_fmu_reset = True
 
 
-	def reset(self, *args, **kwargs):
+	def reset(self,):
 		
 		if self.global_fmu_reset: #don't advance simulaiton on fmu any further on actual time
 			# Reset start_time to fmu_start_time
@@ -91,7 +92,7 @@ class testbed_base(gym.Env):
 		# simulation time elapsed
 		self.simulation_time_elapsed = 0.0
 		# get current value of observation variables
-		self.obs : np.array = np.array([i[0] for i in self.fmu.get(variable_name=self.obs_vars)])
+		self.obs : np.array = np.array([i[0] for i in self.fmu.get(self.obs_vars)])
 
 		# Standard requirements for interfacing with gym environments
 		self.steps_beyond_done = None
@@ -111,7 +112,7 @@ class testbed_base(gym.Env):
 		reward, info_dict = self.calculate_reward_and_info(self.obs, action, self.obs_next)
 
 		# log the info_dict for our purpose
-		self.log_info(info_dict)
+		# self.log_info(info_dict)
 
 		# process the observation before sending it to the agent
 		obs_next_processed : np.array = self.obs_processor(self.obs_next)
@@ -124,7 +125,7 @@ class testbed_base(gym.Env):
 		self.simulation_time_elapsed += self.step_size
 		done = self.check_done(self.start_time, self.simulation_time_elapsed)
 
-		return obs_next_processed, reward, done, {}
+		return obs_next_processed, reward, done, info_dict
 
 
 	# Process the action
@@ -139,7 +140,7 @@ class testbed_base(gym.Env):
 	def state_transition(self, obs, action):
 
 		# check input type
-		if isinstance(action,np.array):
+		if isinstance(action,np.ndarray):
 			action = list(action)
 		elif isinstance(action, list):
 			pass
@@ -154,7 +155,7 @@ class testbed_base(gym.Env):
 		if self.simulation_status!=0: 
 			print("Something wrong with the Simulation: {}".format(self.simulation_status))
 		# get the observation variables
-		obs_next : list = [i[0] for i in self.fmu.get(variable_name=self.obs_vars)]
+		obs_next : list = [i[0] for i in self.fmu.get(self.obs_vars)]
 
 		return np.array(obs_next)
 
@@ -215,7 +216,8 @@ class testbed_base(gym.Env):
 		"""
 		membership = [var in self.fmu_var_names for var in vars]
 		absent_vars = [var for var,member in zip(vars, membership) if not member]
-		return not all(membership), absent_vars
+
+		return all(membership), absent_vars
 
 
 	# load the fmu model variable dicitonary keys
@@ -223,6 +225,9 @@ class testbed_base(gym.Env):
 		with open(fmu_vars_path, 'r') as f: 
 			self.fmu_var_names = jsonload(f).keys()
 		f.close()
+
+
+
 
 # Example of one testbed where we control only the AHU heating coil.
 class testbed_v0(testbed_base):
@@ -244,11 +249,28 @@ class testbed_v0(testbed_base):
 	def __init__(self, *args, **kwargs):
 		from testbed_utils import dataframescaler
 		super().__init__(*args, **kwargs)
-		self.params = kwargs['testbed_v0_params']
-		self.ahu_stpt = np.array(self.params['initial_ahu_stpt'])
-		self.ahu_heat_stpt_ub = np.array(self.params['ahu_heat_stpt_ub'])
-		self.ahu_heat_stpt_lb = np.array(self.params['ahu_heat_stpt_lb'])
-		self.scaler : dataframescaler = self.params['scaler']
+		# reset the fmu to appropriate time point to get correct values; no need to set global_fmu_reset
+		_ = self.reset()
+		self.ahu_stpt = np.array(kwargs['initial_ahu_stpt'])
+		self.ahu_heat_stpt_ub = np.array(kwargs['ahu_heat_stpt_ub'])
+		self.ahu_heat_stpt_lb = np.array(kwargs['ahu_heat_stpt_lb'])
+		self.scaler : dataframescaler = kwargs['scaler']
+		self.r_energy_wt, self.r_comfort_wt = kwargs['r_energy_wt'], kwargs['r_comfort_wt']
+		# energy variables used to calculate reward
+		self.power_variables = ['res.PFan', 'res.PHea', 'res.PCooSen', 'res.PCooLat']
+		# * Here 'res.PCooSen','res.PCooLat' will be negative so we have to negate the values *
+		self.power_sign = [1.0, 1.0, -1.0, -1.0]
+		# zone temperature var names
+		self.zone_temp_vars : List[str] = ['TSupCor.T','TSupEas.T','TSupWes.T','TSupNor.T','TSupSou.T']
+		# zone temperature cooling and heating bounds
+		self.zone_temp_cool = ['conVAVCor.TRooCooSet','conVAVEas.TRooCooSet','conVAVWes.TRooCooSet',
+								'conVAVNor.TRooCooSet','conVAVSou.TRooCooSet']
+		self.zone_temp_heat = ['conVAVCor.TRooHeaSet','conVAVEas.TRooHeaSet','conVAVWes.TRooHeaSet',
+								'conVAVNor.TRooHeaSet','conVAVSou.TRooHeaSet']
+		# temp ub
+		self.temp_ub : np.array = np.array([i[0] for i in self.fmu.get(self.zone_temp_cool)])
+		# temp lb
+		self.temp_lb : np.array = np.array([i[0] for i in self.fmu.get(self.zone_temp_heat)])
 
 	# Process the action
 	def action_processor(self, a):
@@ -276,20 +298,36 @@ class testbed_v0(testbed_base):
 		Also use the deviation between the room temperature and set point during day time
 		"""
 		
-		power_variables = ['res.PFan', 'res.PHea', 'res.PCooSen', 'res.PCooLat']
-		power_sign = [1.0, 1.0, -1.0, -1.0]
-		# * Here 'res.PCooSen','res.PCooLat' will be negative so we have to negate the values *
-		power_values = [i[0]*j for i,j in zip(self.fmu.get(variable_name=power_variables),power_sign)]
+		'''energy component of the reward '''
+		power_values = np.array([i[0]*j for i,j in zip(self.fmu.get(self.power_variables),
+														self.power_sign)])
+		# scale the power values
+		power_values = self.scaler.minmax_scale(power_values, input_columns= self.power_variables,
+											 df_2scale_columns= self.power_variables)
 		# reward incentivizes lower energy; reward lower energy
-		r_energy = -1.0*np.sum(np.array(power_values))[0]
+		r_energy = -1.0*np.sum(power_values)
+
+		'''comfort component of the reward: we only penalize deviation when there is occupancy'''
+		# see if zone is occupied
+		occupancy_status : int = int(self.fmu.get('occSch.occupied')[0])
+		# zone temperatures
+		zone_temp : np.array = np.array([i[0] for i in self.fmu.get(self.zone_temp_vars)])
+		# check whether zone_temp is within the range per zone
+		temp_within_range : np.array = (zone_temp>self.temp_lb) & (zone_temp<self.temp_ub)
+		r_comfort = occupancy_status*np.sum(temp_within_range)
+
+		reward = self.r_energy_wt*r_energy +  self.r_comfort_wt*r_comfort
 
 		info = {}
-		info['reward'] = r_energy
+		info['reward_energy'] = r_energy
+		info['reward_comfort'] = r_comfort
 		info['action'] = action[0]
-		for name,val in zip(power_variables, power_values):
+		for name,val in zip(self.power_variables, power_values):
+			info[name] = val
+		for name,val in zip(self.zone_temp_vars, zone_temp):
 			info[name] = val
 		for name, val in zip(self.obs_vars, obs):
 			info[name] = val
 		
-		return r_energy, info
+		return reward, info
 		
