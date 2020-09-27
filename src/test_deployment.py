@@ -17,8 +17,8 @@ from testbed_utils import rl_perf_save, dataframescaler
 WORKING_DIR = os.path.abspath(os.getcwd())
 DEFAULT_CONFIG_FILE = os.path.join(WORKING_DIR, 'config.cfg')
 DEFAULT_CONIFG_SECTION = "TESTBED_V0_DEFAULT"
-DEFAULT_TIMESTEPS = 22
-OUTPUT_DIR = WORKING_DIR+'/tmp/'
+DEFAULT_TIMESTEPS = 100
+OUTPUT_DIR = WORKING_DIR+'/temp/'
 META_DATA_FILE = os.path.join(WORKING_DIR, 'resource/meta_data.json')
 
 
