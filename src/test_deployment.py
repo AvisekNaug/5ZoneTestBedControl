@@ -10,7 +10,7 @@ import time
 
 import numpy as np
 
-from testbed_env import testbed_v0
+from testbed_env import testbed_v1
 from agents import RandomAgent, PerformanceMetrics
 from testbed_utils import rl_perf_save, dataframescaler
 
@@ -73,7 +73,7 @@ if __name__ == '__main__':
 						ub=np.array(settings['action_space_bounds'][1]))
 	log.info('Agent Created')
 	# set up the environment
-	env = testbed_v0(**settings)
+	env = testbed_v1(**settings)
 	log.info('Environment Created')
 	# get initial state of the system
 	obs = env.reset()

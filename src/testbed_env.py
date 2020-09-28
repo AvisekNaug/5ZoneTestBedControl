@@ -230,7 +230,7 @@ class testbed_base(gym.Env):
 
 
 # Example of one testbed where we control only the AHU heating coil.
-class testbed_v0(testbed_base):
+class testbed_v1(testbed_base):
 	"""
 	Inherits the base testbed class. This version has the following characteristics
 
