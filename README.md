@@ -16,10 +16,11 @@ This testbed is compiled into an FMU using any modelica compiler. We used the **
 
 A simple example compilation preocedure is demonstrated below. The requirements for this compilation procedure is to have the **pymodelica** package which uses the JModelica compiler backend installed in the local machine. Detailed steps to do this installation is discussed as a part of installing the JModelica compiler with python support inside a Docker [here](https://github.com/AvisekNaug/JModelica_docker).
 
-First clone the [5 Thermal Zones Test Bed](https://github.com/AvisekNaug/buildings_library_dev) library. Then provide the path to the library to the `MODELICAPATH` environment variable.
+First clone the [5 Thermal Zones Test Bed](https://github.com/AvisekNaug/buildings_library_dev) and this library. Then provide the path to the library to the `MODELICAPATH` environment variable.
 
 ```bash
 git clone https://github.com/AvisekNaug/buildings_library_dev
+git clone https://github.com/AvisekNaug/5ZoneTestBedControl
 export MODELICAPATH=<path to the 5 Thermal Zones Test Bed library on the local machine>:$MODELICAPATH
 ```
 
