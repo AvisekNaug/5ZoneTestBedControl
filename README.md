@@ -1,15 +1,40 @@
 # 5 Zone Test Bed Control
-This repository can be used to demonstrate how a standard reinforcement learning agent respecting the OpenAI Gym protocol can interact with a [5 Thermal Zones Test Bed](https://github.com/AvisekNaug/buildings_library_dev). This 5 Zone model is built based on the [corresponding open loop control implementation]((https://simulationresearch.lbl.gov/modelica/releases/latest/help/Buildings_Examples_VAVReheat_BaseClasses.html#Buildings.Examples.VAVReheat.BaseClasses.PartialOpenLoop)) of the [Modelica Buildings Library](https://github.com/lbl-srg/modelica-buildings). The proposed extension of the existing open loop testbed will allow the end user to implement any type of **supervisory control only**(ie setting the setpoint) **through a Python Programming interface**for different parts of the 5 Zone model. The ability to implement these controls will vary across different versions of the proposed extension. Below we detail one such version. With development newer versions will be added with more functionality.
+This repository can be used to demonstrate how a standard reinforcement learning agent respecting the OpenAI Gym protocol can interact with a [5 Thermal Zones Test Bed](https://github.com/AvisekNaug/buildings_library_dev). This 5 Zone model is built based on the [corresponding open loop control implementation]((https://simulationresearch.lbl.gov/modelica/releases/latest/help/Buildings_Examples_VAVReheat_BaseClasses.html#Buildings.Examples.VAVReheat.BaseClasses.PartialOpenLoop)) of the 5 Zone testbed in the [Modelica Buildings Library](https://github.com/lbl-srg/modelica-buildings). The proposed extension of the existing open loop testbed will allow the end user to implement any type of **supervisory control only**(ie setpoint control) **through a Python Programming interface**for different plant models located in the 5 Zone test bed. The ability to implement these controls will vary across different versions of the proposed extension. Below we detail one such version. With development newer versions will be added with more functionality.
 
 # Different versions of the testbed Modelica File
 We plan to develop multiple versions of the testbed each with more functionalities to make changes to the testbed.
 
 ## Testbed_v1
-The initial version is the [testbed_v1](https://github.com/AvisekNaug/buildings_library_dev/blob/master/Buildings/Examples/VAVReheat/testbed_v1.mo). It allows the **supervisory control only** of the following components of the 5 Zone Testbed.
+This is the testbed version [testbed_v1](https://github.com/AvisekNaug/buildings_library_dev/blob/master/Buildings/Examples/VAVReheat/testbed_v1.mo). 
 
-* Heating Coil Setpoint of the Air Handling Unit.
-* Heating Coil Setpoint of the individual Terminal Reheat Units. There are 5 such units.
-* Cooling Coil Setpoint of the Air Handling Unit.
+### Action Space for the testbed:
+
+It allows the **supervisory control only** of the following components of the 5 Zone Testbed.
+
+* Heating Coil Temperature Setpoint of the Air Handling Unit. It currently heats the air whenever the mixed air temperature falls below the setpoint and the building is occupied or in warmup mode. The low level controller is PI based.
+* Heating and Cooling Temperature Setpoints of the individual Terminal Reheat Units/Rooms. There are 5 such units. The low level controller implemented in those units are deadband controllers. They remain turned off as long as the temperature of the room is within those ranges of the set point.
+
+All these variables can be adjusted by the user of the testbed using the supervisory controller of their choice. The user can also choose to control only a certain subste of the controller set points and the rest would be controlled by the Python interface for the testbed using default rules.
+
+### Observation Space for the testbed:
+
+Though every possible variable can be queried as a part of the observation space, for the purposes of demnstration we name a few of the observation variables of interest to our own reinforcement learning control. These are:
+
+* 'weaBus.TDryBul', # dry bulb temperature
+* 'weaBus.relHum', # relative humidity
+* 'weaBus.HGloHor', # global horz irradiation
+* 'TSup.T',# ahu final air temperature
+* 'TRooAir.y5[1]',# corridor zone temperature
+* 'TRooAir.y3[1]',# nor zone temperature
+* 'TRooAir.y1[1]',# sou zone temperature
+* 'TRooAir.y2[1]',# eas zone temperature
+* 'TRooAir.y4[1]']# wes zone temperature
+
+The generic method to query the value of an observation at any time point using the PyFMI library is `fmu.get([variable _name'])`
+
+### State Variables for the testbed:
+
+The fmu also maintains internally a set of state variables used to keep tab of the current state of the system. Since it is a large list we chose not to show the entire list here. The PyFMI library allows to query all the state variables in the FMU using the `fmu.get_state_list()` command.
 
 # Compiling the 5 Zone TestBed into an FMU
 This testbed is compiled into an FMU using any modelica compiler. We used the **pymodelica** package which uses the JModelica compiler backend to compile the testbed. 
@@ -30,6 +55,11 @@ for example on Linux this would be
 export MODELICAPATH=$HOME/buildings_library_dev:$MODELICAPATH
 ```
 
+Navigate to fmu_models folder to store the fmu
+```bash
+cd 5ZoneTestBedControl/fmu_models
+```
+Compile the FMU by providing apprpriate path to the .mo file
 ```python
 # assuming the proper packages are installed with their appropriate 
 # backend modelica compiler and MODELICAPATH is set
@@ -38,6 +68,23 @@ import pymodelica
 pymodelica.environ['JVM_ARGS'] = '-Xmx4096m'  # Increase memory in case compilation fails
 model_name = 'Buildings.Examples.VAVReheat.testbed_v1'
 fmu_path = compile_fmu(model_name, target='cs') # fmu is now compiled
+```
+
+# Load an FMU 
+
+To use a compiled FMU from above we do the following steps
+
+```bash
+cd $HOME/5ZoneTestBedControl
+```
+Now inside the python do the following
+```python
+from pyfmi import load_fmu
+import numpy as np
+import time
+
+fmu_path = 'fmu_models/Buildings.Examples.VAVReheat.testbed_v1.fmu'
+fmu = load_fmu(fmu_path)
 ```
 
 Now that the FMU is created a standard Python interface is provided to interact with the testbed. This is provided by the `src/testbed_env.py` script discussed below.
