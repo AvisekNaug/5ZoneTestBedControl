@@ -1,8 +1,8 @@
 # 5 Zone Test Bed Control
-This repository can be used to demonstrate how a standard reinforcement learning agent respecting the OpenAI Gym protocol can interact with a [5 Thermal Zones Test Bed](https://github.com/AvisekNaug/buildings_library_dev). This 5 Zone model is built based on the [corresponding open loop control implementation]((https://simulationresearch.lbl.gov/modelica/releases/latest/help/Buildings_Examples_VAVReheat_BaseClasses.html#Buildings.Examples.VAVReheat.BaseClasses.PartialOpenLoop)) of the 5 Zone testbed in the [Modelica Buildings Library](https://github.com/lbl-srg/modelica-buildings). The proposed extension of the existing open loop testbed will allow the end user to implement any type of **supervisory control only**(ie setpoint control) **through a Python Programming interface**for different plant models located in the 5 Zone test bed. The ability to implement these controls will vary across different versions of the proposed extension. Below we detail one such version. With development newer versions will be added with more functionality.
+This repository can be used to combine any supervisory control strategy (like standard reinforcement learning agents which respect the OpenAI Gym protocol) with a [5 Thermal Zones Test Bed](https://github.com/AvisekNaug/buildings_library_dev). This 5 Zone model is built based on the [corresponding open loop control implementation]((https://simulationresearch.lbl.gov/modelica/releases/latest/help/Buildings_Examples_VAVReheat_BaseClasses.html#Buildings.Examples.VAVReheat.BaseClasses.PartialOpenLoop)) of the 5 Zone testbed in the [Modelica Buildings Library](https://github.com/lbl-srg/modelica-buildings). The proposed extension of the existing open loop testbed will allow the end user to implement any type of **supervisory control only**(ie setpoint control) **through a Python Programming interface**for different plant models located in the 5 Zone test bed. The ability to implement these controls will vary across different versions of the proposed extension. Below we detail one such version. With development newer versions will be added with more functionality.
 
-# Different versions of the testbed Modelica File
-We plan to develop multiple versions of the testbed each with more functionalities to make changes to the testbed.
+# Different versions of the testbed(Modelica File)
+We plan to develop multiple versions of the testbed each with more functionalities to allow more control of the testbed.
 
 ## Testbed_v1
 This is the testbed version [testbed_v1](https://github.com/AvisekNaug/buildings_library_dev/blob/master/Buildings/Examples/VAVReheat/testbed_v1.mo). 
@@ -11,8 +11,8 @@ This is the testbed version [testbed_v1](https://github.com/AvisekNaug/buildings
 
 It allows the **supervisory control only** of the following components of the 5 Zone Testbed.
 
-* Heating Coil Temperature Setpoint of the Air Handling Unit. It currently heats the air whenever the mixed air temperature falls below the setpoint and the building is occupied or in warmup mode. The low level controller is PI based.
-* Heating and Cooling Temperature Setpoints of the individual Terminal Reheat Units/Rooms. There are 5 such units. The low level controller implemented in those units are deadband controllers. They remain turned off as long as the temperature of the room is within those ranges of the set point.
+* <u>Heating Coil Temperature Setpoint of the Air Handling Unit</u>. It heats the air whenever the mixed air temperature falls below the setpoint and the building is occupied or in warmup mode. The low level controller is PI based. This means that in the current set up the coils won't turn on when the building is unoccupied (i.e. at night/after office hours. This is an existing feature of the default testbed which we plan to override in a future version.)
+* <u>Heating and Cooling Temperature Setpoints of the individual Terminal Reheat Units/Rooms</u>. There are 5 such units. The low level controller implemented in those units are deadband controllers. They remain turned off as long as the temperature of the room is within those ranges of the set point.
 
 All these variables can be adjusted by the user of the testbed using the supervisory controller of their choice. The user can also choose to control only a certain subste of the controller set points and the rest would be controlled by the Python interface for the testbed using default rules.
 
@@ -111,6 +111,6 @@ All these methods can be overridden by any class inheriting from this based envi
 
 ## Example
 
-We created a simple testbed `testbed_v1` where we use `ambient temperature, humidity, solar radiation, ahu supply air temperature` as observation variables. `ahu heating coil setpoint` as the action variable. 
+We created a simple testbed `testbed_v1` where we use `ambient temperature, humidity, solar radiation, ahu supply air temperature, zone temperatures` as `observation` variables. `ahu heating coil, terminal heating and cooling coils temperatue setpoint` as the `action` variables. The `reward` incentivizes less energy consumption, better zone comfort for each zone.
 
-A complete description of all possible variables that can be treated as part of the observation space is provided [here](https://github.com/AvisekNaug/5ZoneTestBedControl/blob/master/RLPPOV1_get_model_variables.json).
+A complete description of all possible variables that can be treated as part of the observation space is provided [here](testbed_dev/resource/testbed_v1_variable_explanation.json).

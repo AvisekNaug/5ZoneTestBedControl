@@ -11,7 +11,7 @@ import time
 import numpy as np
 
 from testbed_env import testbed_v0, testbed_v1
-from agents import RandomAgent, PerformanceMetrics
+from simple_agents import RandomAgent, PerformanceMetrics
 from testbed_utils import rl_perf_save, dataframescaler
 
 WORKING_DIR = os.path.abspath(os.getcwd())
