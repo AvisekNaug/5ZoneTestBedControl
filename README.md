@@ -113,7 +113,7 @@ All these methods can be overridden by any class inheriting from this based envi
 
 ## Selecting actions
 
-The testbed provides the user to control a set of actions. The user has to speify which actions they wish to control using their own controller in the `src/config.cfg` file. The rest of the actions will be handled internally by an internal agent in `src/simple_agents.py`. For the current versions of the testbed the default rules are implemented. If the user wishes to create separate default rules, they can subclass the `InternalAgent` class in `simple_agents.py` to provide their own default rules.
+The testbed provides the user to control a set of actions. The user has to speify which actions they wish to control using their own controller in the `config.cfg` file. The rest of the actions will be handled internally by an internal agent in `src/simple_agents.py`. For the current versions of the testbed the default rules are implemented. If the user wishes to create separate default rules, they can subclass the `InternalAgent` class in `simple_agents.py` to provide their own default rules.
 
 ## Example
 
