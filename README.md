@@ -90,7 +90,9 @@ fmu = load_fmu(fmu_path)
 Now that the FMU is created a standard Python interface is provided to interact with the testbed. This is provided by the `src/testbed_env.py` script discussed below.
 
 # Interaction with the testbed using a Python, OpenAIGym, PyFMI library and the testbed FMU
-The base testbed class called `testbed_base` implements some of the lower level functionalities following the OpenAI Gym method of creating an environment, stepping through the testbed simulation etc. These are the following
+
+## The base testbed
+The base testbed class called `testbed_base`(located in src/testbed_env.py) implements some of the lower level functionalities following the OpenAI Gym method of creating an environment, stepping through the testbed simulation etc. These are the following
 
 `__init__` : used to pass the `names` and `gym space` type of the variables used as observations and actions for the process. IT also needs the path to the complied `fmu` model and the path to the json file containing all the `fmu variables`.
 
@@ -108,6 +110,10 @@ The base testbed class called `testbed_base` implements some of the lower level 
 `load_fmu` : Load the compiled fmu from a given path.
 
 All these methods can be overridden by any class inheriting from this based environment.
+
+## Selecting actions
+
+The testbed provides the user to control a set of actions. The user has to speify which actions they wish to control using their own controller in the `src/config.cfg` file. The rest of the actions will be handled internally by an internal agent in `src/simple_agents.py`. For the current versions of the testbed the default rules are implemented. If the user wishes to create separate default rules, they can subclass the `InternalAgent` class in `simple_agents.py` to provide their own default rules.
 
 ## Example
 
