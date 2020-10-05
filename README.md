@@ -120,3 +120,5 @@ The testbed provides the user to control a set of actions. The user has to speif
 We created a simple testbed `testbed_v1` where we use `ambient temperature, humidity, solar radiation, ahu supply air temperature, zone temperatures` as `observation` variables. `ahu heating coil, terminal heating and cooling coils temperatue setpoint` as the `action` variables. The `reward` incentivizes less energy consumption, better zone comfort for each zone.
 
 A complete description of all possible variables that can be treated as part of the observation space is provided [here](resource/testbed_v1_variable_explanation.json).
+
+The example output for testbed_v1 with the controlled using a `RandomAgent` and the rest of the variables controlled using a `InternalAgent_testbed_v1` class is shown below in the notebook folder.
