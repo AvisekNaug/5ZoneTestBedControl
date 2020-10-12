@@ -14,7 +14,7 @@ from gym import spaces
 from pyfmi import load_fmu
 from pyfmi.fmi import FMUModelCS2, FMUModelCS1  # pylint: disable=no-name-in-module
 
-from simple_ import InternalAgent_testbed_v1
+from simple_agents import InternalAgent_testbed_v1
 
 # base testbed class
 class testbed_base(gym.Env):
