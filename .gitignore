@@ -6,5 +6,6 @@
 .pyc
 __pycache__
 *.out
-logs.txt
+*.txt
 Notebook/
+tmp
