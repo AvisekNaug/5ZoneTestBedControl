@@ -1,8 +1,10 @@
 # extensions
 .pyc
 .ipynb_checkpoints
+.ipynb
 ./vscode
 .pyc
 __pycache__
 *.out
 *.txt
+Notebook/
