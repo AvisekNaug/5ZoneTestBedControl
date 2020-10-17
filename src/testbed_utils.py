@@ -7,47 +7,14 @@ This script contains all the data processing activities that are needed
 before it can be provided to any other object
 """
 
-
-import os
-import glob
 from typing import Union
-
-
 import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler
-
-
 import pandas as pd
-from scipy import stats
-from scipy.fftpack import fft
-import scipy.signal as signal
-
-
-from matplotlib import pyplot as plt
-from matplotlib.dates import date2num
 
 
 # sources of data for which processing can be done
 DATASOURCE = ['BdX']
 DATATYPE = ['.csv', '.xlsx', '.pkl']
-
-
-# methods plugin dictionary
-PLUGINS = dict()
-def register(func):
-	"""Register a function as a plug-in to call it via string
-	
-	Arguments:
-		func {python function object} -- function to register
-	
-	Returns:
-		python function object -- return same function
-	"""
-	global PLUGINS
-	PLUGINS[func.__name__] = func
-
-	return func
 
 class dataframescaler():
 	"""
@@ -151,5 +118,3 @@ def rl_perf_save(test_perf_log_list: list, log_dir: str, save_as: str = 'csv', h
 					f.writelines("%s\n" % j for j in value)
 					f.close()
 				header = False
-
-
