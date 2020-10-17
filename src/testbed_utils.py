@@ -6,7 +6,7 @@ This script contains utility functions for alumni hall related processing
 This script contains all the data processing activities that are needed
 before it can be provided to any other object
 """
-
+import os
 from typing import Union
 import numpy as np
 import pandas as pd
@@ -98,6 +98,9 @@ def rl_perf_save(test_perf_log_list: list, log_dir: str, save_as: str = 'csv', h
 	# assert that perf metric has data from at least one episode
 	assert all([len(i.metriclist) != 0 for i in test_perf_log_list]), 'Need metric data for at least one episode'
 
+	if not os.path.exists(log_dir):
+		os.makedirs(log_dir)
+
 	# iterate throguh each environment in a single Trial
 	for idx, test_perf_log in enumerate(test_perf_log_list):
 	
@@ -110,11 +113,11 @@ def rl_perf_save(test_perf_log_list: list, log_dir: str, save_as: str = 'csv', h
 
 			if save_as == 'csv':
 				df = pd.DataFrame(data=episode_dict)
-				df.to_csv(log_dir+'results.csv', index=False, mode='a+', header=header)
+				df.to_csv(log_dir+'/results.csv', index=False, mode='a+', header=header)
 				header = False
 			else:
 				for key, value in episode_dict.items():
-					f = open(log_dir + 'EnvId{}-'.format(idx) + key + '.txt', 'a+')
+					f = open(log_dir + '/EnvId{}-'.format(idx) + key + '.txt', 'a+')
 					f.writelines("%s\n" % j for j in value)
 					f.close()
 				header = False
