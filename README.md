@@ -121,4 +121,7 @@ We created a simple testbed `testbed_v1` where we use `ambient temperature, humi
 
 A complete description of all possible variables that can be treated as part of the observation space is provided [here](resource/testbed_v1_variable_explanation.json).
 
-The example output for testbed_v1 with the controlled using a `RandomAgent` and the rest of the variables controlled using a `InternalAgent_testbed_v1` class is shown below in the notebook folder.
+The example output for testbed_v1 with the controlled using a `RandomAgent` and the rest of the variables controlled using a `InternalAgent_testbed_v1` class is shown below.
+```bash
+python src/test_deployment.py -t 25 -d tb1 -b testbed_v1 -s TESTBED_V1
+```
