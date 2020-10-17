@@ -14,7 +14,7 @@ conda env create -f environment.yml
 
 ## Example run
 
-We created a simple testbed `testbed_v1` where we use `ambient temperature, humidity, solar radiation, ahu supply air temperature, zone temperatures` as `observation` variables. `AHU heating temperatue setpoint, South zone heating temperatue setpoint and Noth zone rcooling temperatue setpoint` as the `action` variables. The other actions are adjusted internally by a [default agent with default rules](## Selecting actions). The `reward` incentivizes less energy consumption, better zone comfort for each zone.
+We created a simple testbed `testbed_v1` where we use `ambient temperature, humidity, solar radiation, ahu supply air temperature, zone temperatures` as `observation` variables. `AHU heating temperatue setpoint, South zone heating temperatue setpoint and Noth zone rcooling temperatue setpoint` as the `action` variables. The other actions are adjusted internally by a [default agent with default rules](#Selecting-actions). The `reward` incentivizes less energy consumption, better zone comfort for each zone.
 
 The example output for testbed_v1 with the controller using a `RandomAgent` and the rest of the variables controlled using a `InternalAgent_testbed_v1` class is shown below.
 ```bash
