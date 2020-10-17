@@ -1,10 +1,31 @@
 # 5 Zone Test Bed Control
 This repository can be used to combine any supervisory control strategy (like standard reinforcement learning agents which respect the OpenAI Gym protocol) with a [5 Thermal Zones Test Bed](https://github.com/AvisekNaug/buildings_library_dev). This 5 Zone model is built based on the [corresponding open loop control implementation]((https://simulationresearch.lbl.gov/modelica/releases/latest/help/Buildings_Examples_VAVReheat_BaseClasses.html#Buildings.Examples.VAVReheat.BaseClasses.PartialOpenLoop)) of the 5 Zone testbed in the [Modelica Buildings Library](https://github.com/lbl-srg/modelica-buildings). The proposed extension of the existing open loop testbed will allow the end user to implement any type of **supervisory control only**(ie setpoint control) **through a Python Programming interface**for different plant models located in the 5 Zone test bed. The ability to implement these controls will vary across different versions of the proposed extension. Below we detail one such version. With development newer versions will be added with more functionality.
 
-# Different versions of the testbed(Modelica File)
+# Quickstart Example
+If you want to quickly get running with this repo follow the two steps below
+## Installation
+The stable installation can be done through conda only
+```bash
+git clone https://github.com/AvisekNaug/5ZoneTestBedControl.git
+cd 55ZoneTestBedControl
+
+conda env create -f environment.yml
+```
+
+## Example run
+
+We created a simple testbed `testbed_v1` where we use `ambient temperature, humidity, solar radiation, ahu supply air temperature, zone temperatures` as `observation` variables. `AHU heating temperatue setpoint, South zone heating temperatue setpoint and Noth zone rcooling temperatue setpoint` as the `action` variables. The other actions are adjusted internally by a [default agent with default rules](## Selecting actions). The `reward` incentivizes less energy consumption, better zone comfort for each zone.
+
+The example output for testbed_v1 with the controller using a `RandomAgent` and the rest of the variables controlled using a `InternalAgent_testbed_v1` class is shown below.
+```bash
+python src/test_deployment.py -t 25 -d tb1 -b testbed_v1 -s TESTBED_V1
+```
+
+
+# Versions of the testbed(Modelica File)
 We plan to develop multiple versions of the testbed each with more functionalities to allow more control of the testbed.
 
-## Testbed_v1
+## 1.0 Testbed_v1
 This is the testbed version [testbed_v1](https://github.com/AvisekNaug/buildings_library_dev/blob/master/Buildings/Examples/VAVReheat/testbed_v1.mo). 
 
 ### Action Space for the testbed:
@@ -32,9 +53,13 @@ Though every possible variable can be queried as a part of the observation space
 
 The generic method to query the value of an observation at any time point using the PyFMI library is `fmu.get([variable _name'])`
 
+A complete description of all possible variables that can be treated as part of the observation space is provided [here](resource/testbed_v1_variable_explanation.json).
+
 ### State Variables for the testbed:
 
 The fmu also maintains internally a set of state variables used to keep tab of the current state of the system. Since it is a large list we chose not to show the entire list here. The PyFMI library allows to query all the state variables in the FMU using the `fmu.get_state_list()` command.
+
+<!-- prettier-ignore 
 
 # Compiling the 5 Zone TestBed into an FMU
 This testbed is compiled into an FMU using any modelica compiler. We used the **pymodelica** package which uses the JModelica compiler backend to compile the testbed. 
@@ -89,6 +114,8 @@ fmu = load_fmu(fmu_path)
 
 Now that the FMU is created a standard Python interface is provided to interact with the testbed. This is provided by the `src/testbed_env.py` script discussed below.
 
+-->
+
 # Interaction with the testbed using a Python, OpenAIGym, PyFMI library and the testbed FMU
 
 ## The base testbed
@@ -114,14 +141,3 @@ All these methods can be overridden by any class inheriting from this based envi
 ## Selecting actions
 
 The testbed provides the user to control a set of actions. The user has to speify which actions they wish to control using their own controller in the `config.cfg` file. The rest of the actions will be handled internally by an internal agent in `src/simple_agents.py`. For the current versions of the testbed the default rules are implemented. If the user wishes to create separate default rules, they can subclass the `InternalAgent` class in `simple_agents.py` to provide their own default rules.
-
-## Example
-
-We created a simple testbed `testbed_v1` where we use `ambient temperature, humidity, solar radiation, ahu supply air temperature, zone temperatures` as `observation` variables. `ahu heating coil, terminal heating and cooling coils temperatue setpoint` as the `action` variables. The `reward` incentivizes less energy consumption, better zone comfort for each zone.
-
-A complete description of all possible variables that can be treated as part of the observation space is provided [here](resource/testbed_v1_variable_explanation.json).
-
-The example output for testbed_v1 with the controlled using a `RandomAgent` and the rest of the variables controlled using a `InternalAgent_testbed_v1` class is shown below.
-```bash
-python src/test_deployment.py -t 25 -d tb1 -b testbed_v1 -s TESTBED_V1
-```
