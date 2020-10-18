@@ -27,6 +27,7 @@ The example output for testbed_v1 with the controller using a `RandomAgent` and 
 (5Zone) $ python src/test_deployment.py -t 25 -d tb1 -b testbed_v1 -s TESTBED_V1
 ```
 
+# Documentation
 
 # Versions of the testbed(Modelica File)
 We plan to develop multiple versions of the testbed each with more functionalities to allow more control of the testbed.
