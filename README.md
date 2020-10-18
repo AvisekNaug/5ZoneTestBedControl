@@ -7,9 +7,15 @@ If you want to quickly get running with this repo follow the two steps below
 The stable installation can be done through conda only
 ```bash
 git clone https://github.com/AvisekNaug/5ZoneTestBedControl.git
-cd 55ZoneTestBedControl
-
+cd 5ZoneTestBedControl
+```
+Install necessary requirements inside a virtual environment using anaconda
+```bash
 conda env create -f environment.yml
+```
+Activate the virtual environment
+```bash
+conda activate 5Zone
 ```
 
 ## Example run
