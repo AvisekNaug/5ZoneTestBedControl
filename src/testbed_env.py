@@ -34,6 +34,8 @@ class testbed_base(gym.Env):
 		action_space_bounds : List[List] = kwargs['action_space_bounds']
 		# time delta in seconds to advance simulation for every step
 		self.step_size = kwargs['step_size']
+		# number of days in one episode
+		self.episode_days = kwargs['episode_days']
 		# path to fmu
 		fmu_path : str = kwargs['fmu']
 		# path to fmu model variables
@@ -184,7 +186,7 @@ class testbed_base(gym.Env):
 		"""
 		if start_time>self.global_fmu_end_time-self.step_size: # won't be able to do a full step
 			self.global_fmu_reset = True
-		return (time_elapsed>=float(3600*24*7)) | self.global_fmu_reset
+		return (time_elapsed>=float(3600*24*self.episode_days)) | self.global_fmu_reset
 
 
 	# Process the observation

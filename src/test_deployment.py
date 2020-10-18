@@ -22,6 +22,7 @@ OUTPUT_DIR = WORKING_DIR+'/tmp'
 META_DATA_FILE = os.path.join(WORKING_DIR, 'resource/meta_data.json')
 DEFAULT_TESTBED = 'testbed_v1'
 DEFAULT_AGENT = 'random'
+NUM_DAYS_IN_ONE_EPISODE = 7
 
 # argument parser
 parser = ArgumentParser(description='Deploy a random Reinforcement Learning Control \
@@ -38,6 +39,8 @@ parser.add_argument('-b', '--testbed', type=str, required=False, default=DEFAULT
 						help='The testbed to use.')
 parser.add_argument('-a', '--agent', type=str, required=False, default=DEFAULT_AGENT,
 						help='The testbed to use.')
+parser.add_argument('-e', '--episode_days', type=int, required=False, default=NUM_DAYS_IN_ONE_EPISODE,
+						help='Number of days in one episode.')
 
 # set up logger
 def create_logger(settings):
@@ -133,6 +136,7 @@ def testbed_v1_random_agent(args):
 
 	log.info('Agent Created')
 	# set up the environment
+	settings['episode_days'] = args.episode_days
 	env = testbed_v1(**settings)
 	log.info('Environment Created')
 	# get initial state of the system
@@ -171,6 +175,7 @@ def testbed_v1_random_agent(args):
 	# save the performance logs
 	rl_perf_save(test_perf_log_list=[performance_logger], log_dir=args.output_dir,
 									save_as= 'csv', header=True)
+
 
 if __name__ == '__main__':
 	args = parser.parse_args()
