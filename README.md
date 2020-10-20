@@ -24,7 +24,7 @@ We created a simple testbed `testbed_v1` where we use `ambient temperature, humi
 
 The example output for testbed_v1 with the controller using a `RandomAgent` and the rest of the variables controlled using a `InternalAgent_testbed_v1` class is shown below.
 ```bash
-(5Zone) $ python src/test_deployment.py -t 25 -d tb1 -b testbed_v1 -s TESTBED_V1
+(5Zone) $ python fivezone/test_deployment.py -t 25 -d tb1 -b testbed_v1 -s TESTBED_V1
 ```
 
 # Documentation
