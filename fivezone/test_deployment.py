@@ -128,8 +128,10 @@ def testbed_v1_random_agent(args):
 	log = create_logger(settings)
 	# USER CAN CREATE AGENT ANYWAY THEY WANT
 	# example: create agent
-	settings['action_idx_by_user'] = [idx for idx,name in enumerate(settings['action_variables'])
-													 if name in settings['user_actions']]
+	settings['action_idx_by_user'] = [settings['action_variables'].index(name) for name in settings['user_actions']]
+	print(settings['action_idx_by_user'])
+	print(np.array(settings['action_space_bounds'][0])[settings['action_idx_by_user']])
+	print(np.array(settings['action_space_bounds'][1])[settings['action_idx_by_user']])
 	
 	agent = RandomAgent(lb=np.array(settings['action_space_bounds'][0])[settings['action_idx_by_user']], \
 						ub=np.array(settings['action_space_bounds'][1])[settings['action_idx_by_user']])

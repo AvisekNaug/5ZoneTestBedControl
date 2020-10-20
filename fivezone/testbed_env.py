@@ -15,6 +15,7 @@ from pyfmi import load_fmu
 from pyfmi.fmi import FMUModelCS2, FMUModelCS1  # pylint: disable=no-name-in-module
 
 from agents import InternalAgent_testbed_v1
+from testbed_utils import dataframescaler
 
 # base testbed class
 class testbed_base(gym.Env):
@@ -24,14 +25,24 @@ class testbed_base(gym.Env):
 	"""
 	def __init__(self, *args, **kwargs):
 
+		# user observation variables
+		self.user_observations : List[str] = kwargs['user_observations']
+		# user action variables
+		self.user_actions : List[str] = kwargs['user_actions']
 		# observation variables
 		self.obs_vars : List[str] = kwargs['observed_variables']
 		# action variables
 		self.act_vars : List[str] = kwargs['action_variables']
 		# observation space bounds
-		obs_space_bounds : List[List] = kwargs['observation_space_bounds']
+		self.obs_space_bounds : List[List] = kwargs['observation_space_bounds']
 		# action space bounds
-		action_space_bounds : List[List] = kwargs['action_space_bounds']
+		self.action_space_bounds : List[List] = kwargs['action_space_bounds']
+
+		self.create_gym_obs_axn_space(self.user_observations, self.user_actions,
+									self.obs_vars, self.act_vars,
+									self.obs_space_bounds, self.action_space_bounds)
+
+
 		# time delta in seconds to advance simulation for every step
 		self.step_size = kwargs['step_size']
 		# number of days in one episode
@@ -42,7 +53,8 @@ class testbed_base(gym.Env):
 		fmu_vars_path : str = kwargs['fmu_vars_path']
 
 		# initialize start time and global end time
-		self.re_init(**{'fmu_start_time':kwargs['fmu_start_time_step'], 'global_fmu_end_time' : kwargs['global_fmu_end_time_step']})
+		self.re_init(**{'fmu_start_time':kwargs['fmu_start_time_step'],
+						 'global_fmu_end_time' : kwargs['global_fmu_end_time_step']})
 
 		# simulation time elapsed
 		self.simulation_time_elapsed = 0.0
@@ -55,21 +67,41 @@ class testbed_base(gym.Env):
 		# assert all_vars_present, "There are missing variables in the FMU:{}".format(absent_vars)
 		# load the fmu
 		self._load_fmu(**{'fmu':fmu_path, 'kind':'CS'})
+		
+	def create_gym_obs_axn_space(self, usr_obs, usr_axn, obs, axn, obs_bounds, axn_bounds):
 
-		# obsservation space bounds
-		assert len(obs_space_bounds)==2, "Exactly two lists are needed: low and high bounds"
-		self.observation_space = spaces.Box(low = np.array(obs_space_bounds[0]),
-											high = np.array(obs_space_bounds[1]),
-											dtype = np.float32)
+		self.usr_axn_idx_unsrtd = [axn.index(name) for name in usr_axn]
+		self.usr_axn_idx = sorted(self.usr_axn_idx_unsrtd)
+		self.usr_obs_idx_unsrtd = [obs.index(name) for name in usr_obs]
+		self.usr_obs_idx = sorted(self.usr_obs_idx_unsrtd)
 
-		# the action space bounds
-		assert len(action_space_bounds)==2, "Exactly two lists are needed: low and high bounds"
-		assert all([actlow == -1*acthigh for actlow,
-		 acthigh in zip(action_space_bounds[0], action_space_bounds[1])]), "Action Space bounds have to be symmetric"
-		self.action_space = spaces.Box(low = np.array(action_space_bounds[0]),
-										high = np.array(action_space_bounds[1]),
+		#  observation space bounds
+		if len(self.usr_obs_idx)!=0:  # not empty
+			self.usr_obs_space_bounds = [[obs_bounds[0][idx] for idx in self.usr_obs_idx],
+									 	 [obs_bounds[1][idx] for idx in self.usr_obs_idx]]
+			assert len(self.usr_obs_space_bounds)==2, "Exactly two lists are needed: low and high bounds"
+			self.observation_space = spaces.Box(low = np.array(self.usr_obs_space_bounds[0]),
+												high = np.array(self.usr_obs_space_bounds[1]),
+												dtype = np.float32)
+			self.no_usr_obs = False
+		else:
+			self.no_usr_obs = True
+
+		# action space bounds
+		if len(self.usr_axn_idx)!=0:  # not empty
+			self.usr_axn_space_bounds = [[axn_bounds[0][idx] for idx in self.usr_axn_idx],
+									     [axn_bounds[1][idx] for idx in self.usr_axn_idx]]
+
+			assert len(self.usr_axn_space_bounds)==2, "Exactly two lists are needed: low and high bounds"
+			assert all([actlow == -1*acthigh for actlow,
+					acthigh in zip(self.usr_axn_space_bounds[0],
+					 self.usr_axn_space_bounds[1])]), "Action Space bounds have to be symmetric"
+			self.action_space = spaces.Box(low = np.array(self.usr_axn_space_bounds[0]),
+										high = np.array(self.usr_axn_space_bounds[1]),
 										dtype = np.float32)
-
+			self.no_usr_action = False
+		else:
+			self.no_usr_action = True
 
 	def re_init(self, *args, **kwargs):
 		"""
@@ -96,19 +128,22 @@ class testbed_base(gym.Env):
 		
 		# simulation time elapsed
 		self.simulation_time_elapsed = 0.0
+
 		# get current value of observation variables
 		self.obs : np.array = np.array([i[0] for i in self.fmu.get(self.obs_vars)])
-
 		# Standard requirements for interfacing with gym environments
 		self.steps_beyond_done = None
 
-		return self.obs
+		if self.no_usr_obs:
+			return None
+		else:
+			return self._obs_processor(np.copy(self.obs))
 
 
-	def step(self, action):
+	def step(self, action=None):
 		
 		# process the action from the agent before sending it to the fmu
-		action : np.array = self.action_processor(action)
+		action : np.array = self._action_processor(action)
 
 		# perform state transition and get next state observation
 		self.obs_next : np.array = self.state_transition(self.obs, action)
@@ -120,7 +155,10 @@ class testbed_base(gym.Env):
 		# self.log_info(info_dict)
 
 		# process the observation before sending it to the agent
-		obs_next_processed : np.array = self.obs_processor(self.obs_next)
+		if self.no_usr_obs:
+			obs_next_processed = None
+		else:
+			obs_next_processed : np.array = self._obs_processor(np.copy(self.obs_next))
 
 		# assign obs_next to obs
 		self.obs = self.obs_next
@@ -133,6 +171,14 @@ class testbed_base(gym.Env):
 		return obs_next_processed, reward, done, info_dict
 
 
+	def _action_processor(self,a):
+
+		if not self.no_usr_action:
+			usr_actions = a  # don't reorder anything
+		else: 
+			usr_actions = a[[self.usr_axn_idx_unsrtd.index(i) for i in self.usr_axn_idx]]  # sort
+		return self.action_processor(usr_actions)
+	
 	# Process the action
 	def action_processor(self, a):
 		"""
@@ -142,7 +188,8 @@ class testbed_base(gym.Env):
 
 
 	# Calculate the observations for the next state of the system
-	def state_transition(self, obs, action):
+	# this function does not need obs since it stores obs internally in fmu
+	def state_transition(self, _, action):
 
 		# check input type
 		if isinstance(action,np.ndarray):
@@ -189,6 +236,10 @@ class testbed_base(gym.Env):
 		return (time_elapsed>=float(3600*24*self.episode_days)) | self.global_fmu_reset
 
 
+	def _obs_processor(self, obs):
+		usr_obs = obs[self.usr_obs_idx_unsrtd]  # chose the obs user wants in their prefererd order
+		return self.obs_processor(usr_obs)
+	
 	# Process the observation
 	def obs_processor(self, obs):
 
@@ -252,7 +303,7 @@ class testbed_v0(testbed_base):
 	"""
 
 	def __init__(self, *args, **kwargs):
-		from testbed_utils import dataframescaler
+		
 		super().__init__(*args, **kwargs)
 		# reset the fmu to appropriate time point to get correct values; no need to set global_fmu_reset
 		_ = self.reset()
@@ -292,8 +343,8 @@ class testbed_v0(testbed_base):
 		"""
 		Scale the observations to 0-1 range 
 		"""
-		return self.scaler.minmax_scale(obs, input_columns= self.obs_vars,
-											 df_2scale_columns= self.obs_vars)
+		return self.scaler.minmax_scale(obs, input_columns= self.user_observations,
+											 df_2scale_columns= self.user_observations)
 
 
 	# calculate reward and other info
@@ -331,7 +382,7 @@ class testbed_v0(testbed_base):
 			info[name] = val
 		for name,val in zip(self.zone_temp_vars, zone_temp):
 			info[name] = val
-		for name, val in zip(self.obs_vars, obs):
+		for name, val in zip(self.user_observations, obs):
 			info[name] = val
 		
 		return reward, info
@@ -354,40 +405,39 @@ class testbed_v1(testbed_base):
 	def __init__(self, *args, **kwargs):
 		from testbed_utils import dataframescaler
 		super().__init__(*args, **kwargs)
-		# reset the fmu to appropriate time point to get correct values; no need to set global_fmu_reset
-		_ = self.reset()
+
 		self._num_actions = len(kwargs['initial_stpt_vals'])
 		self.stpt_vals = np.array(kwargs['initial_stpt_vals'])
 		self.stpt_vals_ub = np.array(kwargs['stpt_vals_ub'])
 		self.stpt_vals_lb = np.array(kwargs['stpt_vals_lb'])
-		self.action_idx_by_user = kwargs['action_idx_by_user']
-		
+		# energy variables used to calculate reward
+		self.power_variables = ['res.PFan', 'res.PHea', 'res.PCooSen', 'res.PCooLat']
+		self.energy_lb = kwargs['energy_lb']
+		self.energy_ub = kwargs['energy_ub']
+		# * Here 'res.PCooSen','res.PCooLat' will be negative so we have to negate the values *
+		self.power_sign = [1.0, 1.0, -1.0, -1.0]
 
 		# create the internal agent to handle unused actions for the testbed
 		self.internal_agent_created = False
-		if len(self.action_idx_by_user)<self._num_actions:  # internal agent needed
-			self.internal_agent = InternalAgent_testbed_v1(self.action_idx_by_user)
+		if len(self.usr_axn_idx)<self._num_actions:  # internal agent needed
+			self.internal_agent = InternalAgent_testbed_v1(self.usr_axn_idx)
 			self.internal_agent_action_idx = self.internal_agent.get_internal_agent_action_idx()
 			self.internal_agent_created = True
-		elif len(self.action_idx_by_user)==self._num_actions:  # internal agent not needed
+		elif len(self.usr_axn_idx)==self._num_actions:  # internal agent not needed
 			pass
 		else:
 			raise IndexError
 
 		# create the scaler dictionary from above information
 		scaler_dict = {}
-		var_names = kwargs['observed_variables'] + kwargs['action_variables']
-		var_lb = kwargs['observation_space_bounds'][0] + kwargs['stpt_vals_lb']
-		var_ub = kwargs['observation_space_bounds'][1] + kwargs['stpt_vals_ub']
+		var_names = kwargs['observed_variables'] + kwargs['action_variables'] + self.power_variables
+		var_lb = kwargs['observation_space_bounds'][0] + kwargs['stpt_vals_lb'] + self.energy_lb
+		var_ub = kwargs['observation_space_bounds'][1] + kwargs['stpt_vals_ub'] + self.energy_ub
 		for key,var_lb,var_ub in zip(var_names, var_lb, var_ub):
 			scaler_dict[key] = {'min':var_lb,'max':var_ub}
 		self.scaler : dataframescaler = dataframescaler(scaler_dict)
 
 		self.r_energy_wt, self.r_comfort_wt = kwargs['r_energy_wt'], kwargs['r_comfort_wt']
-		# energy variables used to calculate reward
-		self.power_variables = ['res.PFan', 'res.PHea', 'res.PCooSen', 'res.PCooLat']
-		# * Here 'res.PCooSen','res.PCooLat' will be negative so we have to negate the values *
-		self.power_sign = [1.0, 1.0, -1.0, -1.0]
 		# zone temperature var names
 		self.zone_temp_vars : List[str] = ['TSupCor.T','TSupEas.T','TSupWes.T','TSupNor.T','TSupSou.T']
 		# zone temperature cooling and heating bounds
@@ -396,6 +446,9 @@ class testbed_v1(testbed_base):
 		self.zone_temp_heat = ['conVAVCor.TRooHeaSet','conVAVEas.TRooHeaSet','conVAVWes.TRooHeaSet',
 								'conVAVNor.TRooHeaSet','conVAVSou.TRooHeaSet']
 
+		# reset the fmu to appropriate time point to get correct values; no need to set global_fmu_reset
+		_ = self.reset()								
+	
 	# Process the action
 	def action_processor(self, a):
 		"""
@@ -404,11 +457,12 @@ class testbed_v1(testbed_base):
 		the internal testbed agent.
 		"""
 		# get final action values  for user agent
-		self.stpt_vals[self.action_idx_by_user] += a
-		self.stpt_vals[self.action_idx_by_user] = \
-						np.clip(self.stpt_vals[self.action_idx_by_user], 
-								self.stpt_vals_lb[self.action_idx_by_user], 
-								self.stpt_vals_ub[self.action_idx_by_user])
+		if not self.no_usr_action:
+			self.stpt_vals[self.usr_axn_idx] += a
+			self.stpt_vals[self.usr_axn_idx] = \
+							np.clip(self.stpt_vals[self.usr_axn_idx], 
+									self.stpt_vals_lb[self.usr_axn_idx], 
+									self.stpt_vals_ub[self.usr_axn_idx])
 
 		# get final action values for internal agent
 		if self.internal_agent_created:
@@ -422,8 +476,8 @@ class testbed_v1(testbed_base):
 		"""
 		Scale the observations to 0-1 range 
 		"""
-		return self.scaler.minmax_scale(obs, input_columns= self.obs_vars,
-											 df_2scale_columns= self.obs_vars)
+		return self.scaler.minmax_scale(obs, input_columns= self.user_observations,
+											 df_2scale_columns= self.user_observations)
 
 
 	# calculate reward and other info
@@ -437,8 +491,8 @@ class testbed_v1(testbed_base):
 		power_values = np.array([i[0]*j for i,j in zip(self.fmu.get(self.power_variables),
 														self.power_sign)])
 		# scale the power values
-		# power_values = self.scaler.minmax_scale(power_values, input_columns= self.power_variables,
-		# 									 df_2scale_columns= self.power_variables)
+		power_values = self.scaler.minmax_scale(power_values, input_columns= self.power_variables,
+											 df_2scale_columns= self.power_variables)
 		# reward incentivizes lower energy; reward lower energy
 		r_energy = -1.0*np.sum(power_values)
 
@@ -470,7 +524,7 @@ class testbed_v1(testbed_base):
 			info[name] = val
 		for name,val in zip(self.zone_temp_vars, zone_temp):
 			info[name] = val
-		for name, val in zip(self.obs_vars, obs):
+		for name, val in zip(self.user_observations, obs):
 			info[name] = val
 		
 		return reward, info
