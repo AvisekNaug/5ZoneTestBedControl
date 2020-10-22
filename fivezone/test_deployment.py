@@ -12,6 +12,7 @@ import numpy as np
 
 from notify_run import Notify
 notify = Notify()
+NOTIFY_ME = False
 
 from testbed_env import testbed_v0, testbed_v1
 from agents import RandomAgent, PerformanceMetrics
@@ -44,6 +45,9 @@ parser.add_argument('-a', '--agent', type=str, required=False, default=DEFAULT_A
 						help='The testbed to use.')
 parser.add_argument('-e', '--episode_days', type=int, required=False, default=NUM_DAYS_IN_ONE_EPISODE,
 						help='Number of days in one episode.')
+parser.add_argument('-f', '--notify_error', type=bool, required=False, default=NOTIFY_ME,
+						help='Notify user in case of error. Set to true only if host \
+							 machine allows sending external messages')						
 
 # set up logger
 def create_logger(settings):
@@ -181,7 +185,8 @@ def testbed_v1_random_agent(args):
 	except Exception as e:
 		log.critical('Main Thread: Script stopped due to:\n{}'.format(e))
 		log.debug(e, exc_info=True)
-		notify.send('Main Thread: Script stopped due to:\n{}'.format(e))
+		if args.notify_error:
+			notify.send('Main Thread: Script stopped due to:\n{}'.format(e))
 		exit(-1)
 
 
