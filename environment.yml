@@ -75,3 +75,8 @@ dependencies:
   - x264=1!152.20180806=h14c3975_0
   - xz=5.2.5=h7b6447c_0
   - zlib=1.2.11=h7b6447c_3
+  - pip:
+    - notify-run==0.0.13
+    - pyqrcode==1.2.1
+    - requests==2.22.0
+    - urllib3==1.25.11
