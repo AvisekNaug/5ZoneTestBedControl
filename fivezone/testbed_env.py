@@ -53,8 +53,8 @@ class testbed_base(gym.Env):
 		fmu_vars_path : str = kwargs['fmu_vars_path']
 
 		# initialize start time and global end time
-		self.re_init(**{'fmu_start_time':kwargs['fmu_start_time_step'],
-						 'global_fmu_end_time' : kwargs['global_fmu_end_time_step']})
+		self.re_init(**{'fmu_start_time_step':kwargs['fmu_start_time_step'],
+						 'global_fmu_end_time_step' : kwargs['global_fmu_end_time_step']})
 
 		# simulation time elapsed
 		self.simulation_time_elapsed = 0.0
@@ -107,9 +107,9 @@ class testbed_base(gym.Env):
 		"""
 		This method exists to change the start time for the fmu during relearning"""
 		# fmu simulation start time
-		self.fmu_start_time = kwargs['fmu_start_time']
+		self.fmu_start_time = 3600.0*kwargs['fmu_start_time_step']
 		# global_fmu_end_time : time used to end the simulation for fmu: need not be actual end of the weather file
-		self.global_fmu_end_time = kwargs['global_fmu_end_time']
+		self.global_fmu_end_time = 3600.0*kwargs['global_fmu_end_time_step']
 		# determine whether the first reset needs to be called once or not
 		self.global_fmu_reset = True
 
@@ -122,7 +122,7 @@ class testbed_base(gym.Env):
 			# reset the fmu
 			self.fmu.reset()
 			# initialize the fmu to t = start_time
-			self.fmu.initialize(start_time = self.start_time, stop_time_defined = False)
+			self.fmu.initialize(start_time = self.start_time, stop_time = self.global_fmu_end_time)
 			# set self.global_fmu_reset to False
 			self.global_fmu_reset = False
 		
@@ -403,7 +403,6 @@ class testbed_v1(testbed_base):
 	3. In this version we will try to incentivize lower energy consumption.
 	"""
 	def __init__(self, *args, **kwargs):
-		from testbed_utils import dataframescaler
 		super().__init__(*args, **kwargs)
 
 		self._num_actions = len(kwargs['initial_stpt_vals'])

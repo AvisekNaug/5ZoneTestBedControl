@@ -129,9 +129,6 @@ def testbed_v1_random_agent(args):
 	# USER CAN CREATE AGENT ANYWAY THEY WANT
 	# example: create agent
 	settings['action_idx_by_user'] = [settings['action_variables'].index(name) for name in settings['user_actions']]
-	print(settings['action_idx_by_user'])
-	print(np.array(settings['action_space_bounds'][0])[settings['action_idx_by_user']])
-	print(np.array(settings['action_space_bounds'][1])[settings['action_idx_by_user']])
 	
 	agent = RandomAgent(lb=np.array(settings['action_space_bounds'][0])[settings['action_idx_by_user']], \
 						ub=np.array(settings['action_space_bounds'][1])[settings['action_idx_by_user']])
