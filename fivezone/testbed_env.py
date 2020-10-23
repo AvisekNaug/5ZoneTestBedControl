@@ -305,17 +305,39 @@ class testbed_v0(testbed_base):
 	def __init__(self, *args, **kwargs):
 		
 		super().__init__(*args, **kwargs)
-		# reset the fmu to appropriate time point to get correct values; no need to set global_fmu_reset
-		_ = self.reset()
+
+		self._num_actions = len(kwargs['initial_stpt_vals'])
 		self.stpt_vals = np.array(kwargs['initial_stpt_vals'])
 		self.stpt_vals_ub = np.array(kwargs['stpt_vals_ub'])
 		self.stpt_vals_lb = np.array(kwargs['stpt_vals_lb'])
-		self.scaler : dataframescaler = kwargs['scaler']
-		self.r_energy_wt, self.r_comfort_wt = kwargs['r_energy_wt'], kwargs['r_comfort_wt']
 		# energy variables used to calculate reward
 		self.power_variables = ['res.PFan', 'res.PHea', 'res.PCooSen', 'res.PCooLat']
+		self.energy_lb = kwargs['energy_lb']
+		self.energy_ub = kwargs['energy_ub']
 		# * Here 'res.PCooSen','res.PCooLat' will be negative so we have to negate the values *
 		self.power_sign = [1.0, 1.0, -1.0, -1.0]
+
+		# create the internal agent to handle unused actions for the testbed
+		self.internal_agent_created = False
+		if len(self.usr_axn_idx)<self._num_actions:  # internal agent needed
+			self.internal_agent = InternalAgent_testbed_v1(self.usr_axn_idx)
+			self.internal_agent_action_idx = self.internal_agent.get_internal_agent_action_idx()
+			self.internal_agent_created = True
+		elif len(self.usr_axn_idx)==self._num_actions:  # internal agent not needed
+			pass
+		else:
+			raise IndexError
+
+		# create the scaler dictionary from above information
+		scaler_dict = {}
+		var_names = kwargs['observed_variables'] + kwargs['action_variables'] + self.power_variables
+		var_lb = kwargs['observation_space_bounds'][0] + kwargs['stpt_vals_lb'] + self.energy_lb
+		var_ub = kwargs['observation_space_bounds'][1] + kwargs['stpt_vals_ub'] + self.energy_ub
+		for key,var_lb,var_ub in zip(var_names, var_lb, var_ub):
+			scaler_dict[key] = {'min':var_lb,'max':var_ub}
+		self.scaler : dataframescaler = dataframescaler(scaler_dict)
+
+		self.r_energy_wt, self.r_comfort_wt = kwargs['r_energy_wt'], kwargs['r_comfort_wt']
 		# zone temperature var names
 		self.zone_temp_vars : List[str] = ['TSupCor.T','TSupEas.T','TSupWes.T','TSupNor.T','TSupSou.T']
 		# zone temperature cooling and heating bounds
@@ -323,19 +345,30 @@ class testbed_v0(testbed_base):
 								'conVAVNor.TRooCooSet','conVAVSou.TRooCooSet']
 		self.zone_temp_heat = ['conVAVCor.TRooHeaSet','conVAVEas.TRooHeaSet','conVAVWes.TRooHeaSet',
 								'conVAVNor.TRooHeaSet','conVAVSou.TRooHeaSet']
-		# temp ub
-		self.temp_ub : np.array = np.array([i[0] for i in self.fmu.get(self.zone_temp_cool)])
-		# temp lb
-		self.temp_lb : np.array = np.array([i[0] for i in self.fmu.get(self.zone_temp_heat)])
+
+		# reset the fmu to appropriate time point to get correct values; no need to set global_fmu_reset
+		_ = self.reset()
 
 	# Process the action
 	def action_processor(self, a):
 		"""
-		Receives the positive / negative change in the heating set point. Will be used to 
-		decide the actual heating set point.
+		Receives the positive / negative change in the actions supplied by the user agent and
+		calculates the current values of those action idx. Rest axn idx vals are provided by
+		the internal testbed agent.
 		"""
-		self.stpt_vals += a
-		self.stpt_vals = np.clip(self.stpt_vals, self.stpt_vals_lb, self.stpt_vals_ub)
+		# get final action values  for user agent
+		if not self.no_usr_action:
+			self.stpt_vals[self.usr_axn_idx] += a
+			self.stpt_vals[self.usr_axn_idx] = \
+							np.clip(self.stpt_vals[self.usr_axn_idx], 
+									self.stpt_vals_lb[self.usr_axn_idx], 
+									self.stpt_vals_ub[self.usr_axn_idx])
+
+		# get final action values for internal agent
+		if self.internal_agent_created:
+			internal_axns = self.internal_agent.predict(self.fmu.get('occSch.occupied')[0])
+			self.stpt_vals[self.internal_agent_action_idx] = internal_axns
+
 		return self.stpt_vals
 
 	# Process the observation
@@ -369,15 +402,24 @@ class testbed_v0(testbed_base):
 		# zone temperatures
 		zone_temp : np.array = np.array([i[0] for i in self.fmu.get(self.zone_temp_vars)])
 		# check whether zone_temp is within the range per zone
+
+		# temp ub
+		self.temp_ub : np.array = np.array([i[0] for i in self.fmu.get(self.zone_temp_cool)])
+		# temp lb
+		self.temp_lb : np.array = np.array([i[0] for i in self.fmu.get(self.zone_temp_heat)])
+
 		temp_within_range : np.array = (zone_temp>self.temp_lb) & (zone_temp<self.temp_ub)
 		r_comfort = occupancy_status*np.sum(temp_within_range)
 
 		reward = self.r_energy_wt*r_energy +  self.r_comfort_wt*r_comfort
 
 		info = {}
+		# add time
+		info['time'] = self.fmu.time
 		info['reward_energy'] = r_energy
 		info['reward_comfort'] = r_comfort
-		info['action'] = action[0]
+		for name,val in zip(self.act_vars, action):
+			info[name] = val
 		for name,val in zip(self.power_variables, power_values):
 			info[name] = val
 		for name,val in zip(self.zone_temp_vars, zone_temp):
@@ -437,7 +479,7 @@ class testbed_v1(testbed_base):
 		self.scaler : dataframescaler = dataframescaler(scaler_dict)
 
 		self.r_energy_wt, self.r_comfort_wt = kwargs['r_energy_wt'], kwargs['r_comfort_wt']
-		# zone temperature var names
+		# zone temperature var names TODO : should we switch to room temps?
 		self.zone_temp_vars : List[str] = ['TSupCor.T','TSupEas.T','TSupWes.T','TSupNor.T','TSupSou.T']
 		# zone temperature cooling and heating bounds
 		self.zone_temp_cool = ['conVAVCor.TRooCooSet','conVAVEas.TRooCooSet','conVAVWes.TRooCooSet',
@@ -509,6 +551,9 @@ class testbed_v1(testbed_base):
 
 		temp_within_range : np.array = (zone_temp>self.temp_lb) & (zone_temp<self.temp_ub)
 		r_comfort = occupancy_status*np.sum(temp_within_range)
+
+		# scale to 0-1 using reasonable bounds(0,5: since there are 5 zones at most)
+		r_comfort = r_comfort/5
 
 		reward = self.r_energy_wt*r_energy +  self.r_comfort_wt*r_comfort
 
