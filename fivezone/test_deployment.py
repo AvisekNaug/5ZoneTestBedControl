@@ -12,7 +12,6 @@ import numpy as np
 
 from notify_run import Notify
 notify = Notify()
-NOTIFY_ME = False
 
 from testbed_env import testbed_v0, testbed_v1
 from agents import RandomAgent, PerformanceMetrics
@@ -27,6 +26,7 @@ META_DATA_FILE = os.path.join(WORKING_DIR, 'resource/meta_data.json')
 DEFAULT_TESTBED = 'testbed_v1'
 DEFAULT_AGENT = 'random'
 NUM_DAYS_IN_ONE_EPISODE = 7
+NOTIFY_ME = False
 
 # argument parser
 parser = ArgumentParser(description='Deploy a random Reinforcement Learning Control \
@@ -45,9 +45,10 @@ parser.add_argument('-a', '--agent', type=str, required=False, default=DEFAULT_A
 						help='The testbed to use.')
 parser.add_argument('-e', '--episode_days', type=int, required=False, default=NUM_DAYS_IN_ONE_EPISODE,
 						help='Number of days in one episode.')
-parser.add_argument('-f', '--notify_error', type=bool, required=False, default=NOTIFY_ME,
-						help='Notify user in case of error. Set to true only if host \
-							 machine allows sending external messages')						
+parser.add_argument('--notify', dest='notify', action='store_true',help='Notify user of different checkpoints')
+parser.set_defaults(notify=NOTIFY_ME) 				
+
+
 
 # set up logger
 def create_logger(settings):
@@ -64,6 +65,8 @@ def create_logger(settings):
 	logger.setLevel(logging.DEBUG)
 	return logger
 
+
+
 def get_settings(config_path, config_section):
 
 	cfg = configparser.RawConfigParser()
@@ -73,60 +76,71 @@ def get_settings(config_path, config_section):
 		params[key]=ast.literal_eval(cfg.get(config_section, key))
 	return params
 
-def testbed_v0_random_agent(args):
-	settings = get_settings(args.config_path, args.config_section)
-	# get agg type and data stats from meta_data.json
-	with open(META_DATA_FILE, 'r') as fp:
-			meta_data_ = json.load(fp)
-	scaler = dataframescaler(meta_data_)
-	# update settings with scaler
-	settings['scaler'] = scaler
-	# create logger
-	log = create_logger(settings)
-	# create agent
-	agent = RandomAgent(lb=np.array(settings['action_space_bounds'][0]), \
-						ub=np.array(settings['action_space_bounds'][1]))
-	log.info('Agent Created')
-	# set up the environment
-	env = testbed_v0(**settings)
-	log.info('Environment Created')
-	# get initial state of the system
-	obs = env.reset()
-	log.info('Agent Resets environment')
-	# logger for deployment performance
-	performance_logger = PerformanceMetrics()
-	# create new empty metric dictionary
-	performance_logger.on_episode_begin()
-	
 
-	# run the prediction for t timesteps
-	s_time = time.time()
-	for iter in range(args.time_steps):
-		log.info('Iteration {} of {}'.format(iter+1,args.time_steps))
-		# get action
-		action = agent.predict(obs)
-		log.info('Action Taken = {}'.format(action))
-		# send action to environment
-		time_start = time.time()
-		obs, _, done, info = env.step(action)
-		time_end = time.time()
-		# log.info('Observation received = {}'.format(obs))
-		log.info('Took {:.2f} s to complete the simulation iteration {} of {}'.format(time_end-time_start, iter+1, args.time_steps))
-		performance_logger.on_step_end(info=info)
-		if done:
-			# add info to metric list
-			performance_logger.on_episode_end()
-			# create new empty metric dictionary
-			performance_logger.on_episode_begin()
-			obs = env.reset()
-			log.info('Agent Resets environment')
-	e_time = time.time()
-	log.info('Took {:.2f} s to complete the simulation for {} iterations'.format(e_time-s_time, args.time_steps))
-	# add info to metric list in case time steps lower than episode length
-	performance_logger.on_episode_end()
-	# save the performance logs
-	rl_perf_save(test_perf_log_list=[performance_logger], log_dir=args.output_dir,
-									save_as= 'csv', header=True)
+
+def testbed_v0_random_agent(args):
+	try:
+		settings = get_settings(args.config_path, args.config_section)
+		# create logger
+		log = create_logger(settings)
+		# USER CAN CREATE AGENT ANYWAY THEY WANT
+		# example: create agent
+		settings['action_idx_by_user'] = [settings['action_variables'].index(name) for name in settings['user_actions']]
+		
+		agent = RandomAgent(lb=np.array(settings['action_space_bounds'][0])[settings['action_idx_by_user']], \
+							ub=np.array(settings['action_space_bounds'][1])[settings['action_idx_by_user']])
+
+		log.info('Agent Created')
+		# set up the environment
+		settings['episode_days'] = args.episode_days
+		env = testbed_v0(**settings)
+		log.info('Environment Created')
+		# get initial state of the system
+		obs = env.reset()
+		log.info('Agent Resets environment')
+		# logger for deployment performance
+		performance_logger = PerformanceMetrics()
+		# create new empty metric dictionary
+		performance_logger.on_episode_begin()	
+
+		# run the prediction for t timesteps
+		s_time = time.time()
+		for iter in range(args.time_steps):
+			log.info('Iteration {} of {}'.format(iter+1,args.time_steps))
+			# get action
+			action = agent.predict(obs)
+			log.info('Action Taken = {}'.format(action))
+			# send action to environment
+			time_start = time.time()
+			obs, _, done, info = env.step(action)
+			time_end = time.time()
+			# log.info('Observation received = {}'.format(obs))
+			log.info('Took {:.2f} s to complete the simulation iteration {} of {}'.format(time_end-time_start, iter+1, args.time_steps))
+			performance_logger.on_step_end(info=info)
+			if done:
+				# add info to metric list
+				performance_logger.on_episode_end()
+				# create new empty metric dictionary
+				performance_logger.on_episode_begin()
+				obs = env.reset()
+				log.info('Agent Resets environment')
+		e_time = time.time()
+		log.info('Took {:.2f} s to complete the simulation for {} iterations'.format(e_time-s_time, args.time_steps))
+		# add info to metric list in case time steps lower than episode length
+		performance_logger.on_episode_end()
+		# save the performance logs
+		rl_perf_save(test_perf_log_list=[performance_logger], log_dir=args.output_dir,
+										save_as= 'csv', header=True)
+		if args.notify:
+			notify.send('Main Thread: Script Ended Without Error')										
+	except Exception as e:
+		log.critical('Main Thread: Script stopped due to:\n{}'.format(e))
+		log.debug(e, exc_info=True)
+		if args.notify:
+			err_pt = settings['fmu_start_time_step'] + iter
+			notify.send('Main Thread: Script stopped at at iteration {} due to \n {}'.format(err_pt,e))
+		exit(-1)
+
 
 
 def testbed_v1_random_agent(args):
@@ -182,12 +196,16 @@ def testbed_v1_random_agent(args):
 		# save the performance logs
 		rl_perf_save(test_perf_log_list=[performance_logger], log_dir=args.output_dir,
 										save_as= 'csv', header=True)
+		if args.notify:
+			notify.send('Main Thread: Script Ended Without Error')										
 	except Exception as e:
 		log.critical('Main Thread: Script stopped due to:\n{}'.format(e))
 		log.debug(e, exc_info=True)
-		if args.notify_error:
-			notify.send('Main Thread: Script stopped due to:\n{}'.format(e))
+		if args.notify:
+			err_pt = settings['fmu_start_time_step'] + iter
+			notify.send('Main Thread: Script stopped at at iteration {} due to \n {}'.format(err_pt,e))
 		exit(-1)
+
 
 
 if __name__ == '__main__':
