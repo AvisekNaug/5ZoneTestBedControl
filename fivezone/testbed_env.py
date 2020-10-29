@@ -738,6 +738,7 @@ class testbed_v3(testbed_base):
 		# reset the fmu to appropriate time point to get correct values; no need to set global_fmu_reset
 		_ = self.reset()
 
+
 	def create_gym_obs_axn_space(self, usr_obs, usr_axn, obs, axn, obs_bounds, axn_bounds):
 
 		self.usr_axn_idx_unsrtd = [axn.index(name) for name in usr_axn]
@@ -797,6 +798,69 @@ class testbed_v3(testbed_base):
 
 		return self.stpt_vals
 
+	# Process the observation
+	def obs_processor(self, obs : np.array):
+		"""
+		Scale the observations to 0-1 range 
+		"""
+		return self.scaler.minmax_scale(obs, input_columns= self.user_observations,
+											 df_2scale_columns= self.user_observations)
+	
+	# calculate reward and other info
+	def calculate_reward_and_info(self, obs, action, obs_next):
+		"""
+		Here we will get the power consumsed over the last 1 hour- initially use only this
+		Also use the deviation between the room temperature and set point during day time
+		"""
+		
+		'''energy component of the reward '''
+		power_values = np.array([i[0]*j for i,j in zip(self.fmu.get(self.power_variables),
+														self.power_sign)])
+		# scale the power values
+		power_values = self.scaler.minmax_scale(power_values, input_columns= self.power_variables,
+											 df_2scale_columns= self.power_variables)
+		# reward incentivizes lower energy; reward lower energy
+		r_energy = -1.0*np.sum(power_values)
+
+		'''comfort component of the reward: we only penalize deviation when there is occupancy'''
+		# see if zone is occupied
+		occupancy_status : int = int(self.fmu.get('occSch.occupied')[0])
+		# zone temperatures
+		zone_temp : np.array = np.array([i[0] for i in self.fmu.get(self.zone_temp_vars)])
+		# check whether zone_temp is within the range per zone
+
+		# temp ub
+		self.temp_ub : np.array = np.array([i[0] for i in self.fmu.get(self.zone_temp_cool)])
+		# temp lb
+		self.temp_lb : np.array = np.array([i[0] for i in self.fmu.get(self.zone_temp_heat)])
+
+		temp_within_range : np.array = (zone_temp>self.temp_lb) & (zone_temp<self.temp_ub)
+		r_comfort = occupancy_status*np.sum(temp_within_range)
+
+		# scale to 0-1 using reasonable bounds(0,5: since there are 5 zones at most)
+		r_comfort = r_comfort/5
+
+		reward = self.r_energy_wt*r_energy +  self.r_comfort_wt*r_comfort
+
+		info = {}
+		# add time
+		info['time'] = self.fmu.time
+		info['reward_energy'] = r_energy
+		info['reward_comfort'] = r_comfort
+		for name,val in zip(self.act_vars, action):
+			info[name] = val
+		for name,val in zip(self.power_variables, power_values):
+			info[name] = val
+		for name,val in zip(self.zone_temp_vars, zone_temp):
+			info[name] = val
+		for name, val in zip(self.user_observations, obs):
+			info[name] = val
+		for name, val in zip(self.zone_occupancy_vars, self.zone_occupancy_status):
+			info[name] = val
+		info['tNexOccAll'] = self.tNexOccAll
+		
+		return reward, info
+	
 	# Calculate the observations for the next state of the system
 	# this function does not need obs since it stores obs internally in fmu
 	def state_transition(self, _, action):
