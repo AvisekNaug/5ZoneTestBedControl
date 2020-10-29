@@ -14,8 +14,8 @@ from gym import spaces
 from pyfmi import load_fmu
 from pyfmi.fmi import FMUModelCS2, FMUModelCS1  # pylint: disable=no-name-in-module
 
-from agents import InternalAgent_testbed_v1
-from testbed_utils import dataframescaler
+from agents import InternalAgent_testbed_v1, InternalAgent_testbed_v2
+from testbed_utils import dataframescaler, simulate_zone_occupancy
 
 # base testbed class
 class testbed_base(gym.Env):
@@ -37,11 +37,6 @@ class testbed_base(gym.Env):
 		self.obs_space_bounds : List[List] = kwargs['observation_space_bounds']
 		# action space bounds
 		self.action_space_bounds : List[List] = kwargs['action_space_bounds']
-
-		self.create_gym_obs_axn_space(self.user_observations, self.user_actions,
-									self.obs_vars, self.act_vars,
-									self.obs_space_bounds, self.action_space_bounds)
-
 
 		# time delta in seconds to advance simulation for every step
 		self.step_size = kwargs['step_size']
@@ -305,6 +300,9 @@ class testbed_v0(testbed_base):
 	def __init__(self, *args, **kwargs):
 		
 		super().__init__(*args, **kwargs)
+		self.create_gym_obs_axn_space(self.user_observations, self.user_actions,
+									self.obs_vars, self.act_vars,
+									self.obs_space_bounds, self.action_space_bounds)
 
 		self._num_actions = len(kwargs['initial_stpt_vals'])
 		self.stpt_vals = np.array(kwargs['initial_stpt_vals'])
@@ -320,7 +318,7 @@ class testbed_v0(testbed_base):
 		# create the internal agent to handle unused actions for the testbed
 		self.internal_agent_created = False
 		if len(self.usr_axn_idx)<self._num_actions:  # internal agent needed
-			self.internal_agent = InternalAgent_testbed_v1(self.usr_axn_idx)
+			self.internal_agent = InternalAgent_testbed_v1(self.usr_axn_idx, self._num_actions)
 			self.internal_agent_action_idx = self.internal_agent.get_internal_agent_action_idx()
 			self.internal_agent_created = True
 		elif len(self.usr_axn_idx)==self._num_actions:  # internal agent not needed
@@ -341,13 +339,48 @@ class testbed_v0(testbed_base):
 		# zone temperature var names
 		self.zone_temp_vars : List[str] = ['TSupCor.T','TSupEas.T','TSupWes.T','TSupNor.T','TSupSou.T']
 		# zone temperature cooling and heating bounds
-		self.zone_temp_cool = ['conVAVCor.TRooCooSet','conVAVEas.TRooCooSet','conVAVWes.TRooCooSet',
-								'conVAVNor.TRooCooSet','conVAVSou.TRooCooSet']
-		self.zone_temp_heat = ['conVAVCor.TRooHeaSet','conVAVEas.TRooHeaSet','conVAVWes.TRooHeaSet',
-								'conVAVNor.TRooHeaSet','conVAVSou.TRooHeaSet']
+		self.zone_temp_cool = ['conVAVCor.TRooCooSet','conVAVNor.TRooCooSet','conVAVSou.TRooCooSet',
+								'conVAVEas.TRooCooSet','conVAVWes.TRooCooSet']
+		self.zone_temp_heat = ['conVAVCor.TRooHeaSet','conVAVNor.TRooHeaSet','conVAVSou.TRooHeaSet',
+								'conVAVEas.TRooHeaSet','conVAVWes.TRooHeaSet']
 
 		# reset the fmu to appropriate time point to get correct values; no need to set global_fmu_reset
 		_ = self.reset()
+
+	def create_gym_obs_axn_space(self, usr_obs, usr_axn, obs, axn, obs_bounds, axn_bounds):
+
+		self.usr_axn_idx_unsrtd = [axn.index(name) for name in usr_axn]
+		self.usr_axn_idx = sorted(self.usr_axn_idx_unsrtd)
+		self.usr_obs_idx_unsrtd = [obs.index(name) for name in usr_obs]
+		self.usr_obs_idx = sorted(self.usr_obs_idx_unsrtd)
+
+		#  observation space bounds
+		if len(self.usr_obs_idx)!=0:  # not empty
+			self.usr_obs_space_bounds = [[obs_bounds[0][idx] for idx in self.usr_obs_idx],
+									 	 [obs_bounds[1][idx] for idx in self.usr_obs_idx]]
+			assert len(self.usr_obs_space_bounds)==2, "Exactly two lists are needed: low and high bounds"
+			self.observation_space = spaces.Box(low = np.array(self.usr_obs_space_bounds[0]),
+												high = np.array(self.usr_obs_space_bounds[1]),
+												dtype = np.float32)
+			self.no_usr_obs = False
+		else:
+			self.no_usr_obs = True
+
+		# action space bounds
+		if len(self.usr_axn_idx)!=0:  # not empty
+			self.usr_axn_space_bounds = [[axn_bounds[0][idx] for idx in self.usr_axn_idx],
+									     [axn_bounds[1][idx] for idx in self.usr_axn_idx]]
+
+			assert len(self.usr_axn_space_bounds)==2, "Exactly two lists are needed: low and high bounds"
+			assert all([actlow == -1*acthigh for actlow,
+					acthigh in zip(self.usr_axn_space_bounds[0],
+					 self.usr_axn_space_bounds[1])]), "Action Space bounds have to be symmetric"
+			self.action_space = spaces.Box(low = np.array(self.usr_axn_space_bounds[0]),
+										high = np.array(self.usr_axn_space_bounds[1]),
+										dtype = np.float32)
+			self.no_usr_action = False
+		else:
+			self.no_usr_action = True
 
 	# Process the action
 	def action_processor(self, a):
@@ -431,21 +464,35 @@ class testbed_v0(testbed_base):
 
 
 
-# Example testbed where we control AHU heating coil and terminal heating coil set points.
+# Example testbed where we can control AHU heating coil and terminal cooling+heating coil set points.
 class testbed_v1(testbed_base):
 	"""
-	Inherits the base testbed base class. This version has the following characteristics
+	Inherits the base testbed base class. This version has the following characteristics:
 
-	1. Receives the delta changes in temperature set points for AHU heating coils as well as the  temperature set points for cooling and heating in the terminal zones. It then creates the resultant temperature set points for the corresponding cases using action_processor. The terminal VAVs have dead band control
+	* Actions: 'delta changes' (limited to [+range,-range]) for the following:
+	  - Air Handling Unit Heating Temperature Setpoint
+	  - Heating Temperature Setpoint for Each Zone 
+	  - Cooling Temperature Setpoint for Each Zone
 
-	2. 0-1 Scales the set of "observed_variables" before sending it back to the agent
-	using the obs_processor method. Must include an object which knows the upper and 
-	lower bounds for each of the observed variables
+	* Observations:
+	  - Depending on user requirement 0-1 scale the observations being returned
 
-	3. In this version we will try to incentivize lower energy consumption.
+	* Inputs:
+	  - Weather data: they are already included in the testbed
+	  - Aggregate Occupancy: It is already included in the testbed
+
+	* Reward 
+	  - Lower energy consumption
+	  	(calculated using 0-1 scaled values)
+	  - Keep Temperature within bounds most of the time for each zone
+	  	(calculated using 0-1 scaled values)
+
 	"""
 	def __init__(self, *args, **kwargs):
 		super().__init__(*args, **kwargs)
+		self.create_gym_obs_axn_space(self.user_observations, self.user_actions,
+									self.obs_vars, self.act_vars,
+									self.obs_space_bounds, self.action_space_bounds)
 
 		self._num_actions = len(kwargs['initial_stpt_vals'])
 		self.stpt_vals = np.array(kwargs['initial_stpt_vals'])
@@ -461,7 +508,7 @@ class testbed_v1(testbed_base):
 		# create the internal agent to handle unused actions for the testbed
 		self.internal_agent_created = False
 		if len(self.usr_axn_idx)<self._num_actions:  # internal agent needed
-			self.internal_agent = InternalAgent_testbed_v1(self.usr_axn_idx)
+			self.internal_agent = InternalAgent_testbed_v1(self.usr_axn_idx, self._num_actions)
 			self.internal_agent_action_idx = self.internal_agent.get_internal_agent_action_idx()
 			self.internal_agent_created = True
 		elif len(self.usr_axn_idx)==self._num_actions:  # internal agent not needed
@@ -482,13 +529,48 @@ class testbed_v1(testbed_base):
 		# zone temperature var names TODO : should we switch to room temps?
 		self.zone_temp_vars : List[str] = ['TSupCor.T','TSupEas.T','TSupWes.T','TSupNor.T','TSupSou.T']
 		# zone temperature cooling and heating bounds
-		self.zone_temp_cool = ['conVAVCor.TRooCooSet','conVAVEas.TRooCooSet','conVAVWes.TRooCooSet',
-								'conVAVNor.TRooCooSet','conVAVSou.TRooCooSet']
-		self.zone_temp_heat = ['conVAVCor.TRooHeaSet','conVAVEas.TRooHeaSet','conVAVWes.TRooHeaSet',
-								'conVAVNor.TRooHeaSet','conVAVSou.TRooHeaSet']
+		self.zone_temp_cool = ['conVAVCor.TRooCooSet','conVAVNor.TRooCooSet','conVAVSou.TRooCooSet',
+								'conVAVEas.TRooCooSet','conVAVWes.TRooCooSet']
+		self.zone_temp_heat = ['conVAVCor.TRooHeaSet','conVAVNor.TRooHeaSet','conVAVSou.TRooHeaSet',
+								'conVAVEas.TRooHeaSet','conVAVWes.TRooHeaSet']
 
 		# reset the fmu to appropriate time point to get correct values; no need to set global_fmu_reset
-		_ = self.reset()								
+		_ = self.reset()
+
+	def create_gym_obs_axn_space(self, usr_obs, usr_axn, obs, axn, obs_bounds, axn_bounds):
+
+		self.usr_axn_idx_unsrtd = [axn.index(name) for name in usr_axn]
+		self.usr_axn_idx = sorted(self.usr_axn_idx_unsrtd)
+		self.usr_obs_idx_unsrtd = [obs.index(name) for name in usr_obs]
+		self.usr_obs_idx = sorted(self.usr_obs_idx_unsrtd)
+
+		#  observation space bounds
+		if len(self.usr_obs_idx)!=0:  # not empty
+			self.usr_obs_space_bounds = [[obs_bounds[0][idx] for idx in self.usr_obs_idx],
+									 	 [obs_bounds[1][idx] for idx in self.usr_obs_idx]]
+			assert len(self.usr_obs_space_bounds)==2, "Exactly two lists are needed: low and high bounds"
+			self.observation_space = spaces.Box(low = np.array(self.usr_obs_space_bounds[0]),
+												high = np.array(self.usr_obs_space_bounds[1]),
+												dtype = np.float32)
+			self.no_usr_obs = False
+		else:
+			self.no_usr_obs = True
+
+		# action space bounds
+		if len(self.usr_axn_idx)!=0:  # not empty
+			self.usr_axn_space_bounds = [[axn_bounds[0][idx] for idx in self.usr_axn_idx],
+									     [axn_bounds[1][idx] for idx in self.usr_axn_idx]]
+
+			assert len(self.usr_axn_space_bounds)==2, "Exactly two lists are needed: low and high bounds"
+			assert all([actlow == -1*acthigh for actlow,
+					acthigh in zip(self.usr_axn_space_bounds[0],
+					 self.usr_axn_space_bounds[1])]), "Action Space bounds have to be symmetric"
+			self.action_space = spaces.Box(low = np.array(self.usr_axn_space_bounds[0]),
+										high = np.array(self.usr_axn_space_bounds[1]),
+										dtype = np.float32)
+			self.no_usr_action = False
+		else:
+			self.no_usr_action = True
 	
 	# Process the action
 	def action_processor(self, a):
@@ -572,3 +654,177 @@ class testbed_v1(testbed_base):
 			info[name] = val
 		
 		return reward, info
+
+
+
+# Example testbed where we can control AHU heating coil and terminal cooling+heating coil set points. We can also modify the occupancy variables individually
+class testbed_v3(testbed_base):
+	"""
+	Inherits the base testbed base class to interact with an RL agent using gym interface. The
+	"create_gym_obs_axn_space" method has to be implemented since it will use a gym interface
+	This version has the following characteristics:
+
+	* Actions: 'delta changes' (limited to [+range,-range]) for the following:
+	  - Air Handling Unit Heating Temperature Setpoint
+	  - Heating Temperature Setpoint for Each Zone 
+	  - Cooling Temperature Setpoint for Each Zone
+
+	* Observations:
+	  - Any fmu variable can be returned as an observation. Depending on user requirement 0-1 scale the observations being returned using custom user methods.
+
+	* Inputs:
+	  - Weather data: they are already included in the testbed
+	  - They should be provided by the user
+
+	* Reward 
+	  - Lower energy consumption
+	  	(calculated using 0-1 scaled values)
+	  - Keep Temperature within bounds most of the time for each zone
+	  	(calculated using 0-1 scaled values)
+
+	"""
+	def __init__(self, *args, **kwargs):
+		super().__init__(*args, **kwargs)
+
+		self.create_gym_obs_axn_space(self.user_observations, self.user_actions,
+									  self.obs_vars, self.act_vars,
+									  self.obs_space_bounds, self.action_space_bounds)
+
+		self._num_actions = len(kwargs['initial_stpt_vals'])
+		self.stpt_vals = np.array(kwargs['initial_stpt_vals'])
+		self.stpt_vals_ub = np.array(kwargs['stpt_vals_ub'])
+		self.stpt_vals_lb = np.array(kwargs['stpt_vals_lb'])
+
+		# zone occupancy variables
+		self.zone_occupancy_vars = ['occSchCor', 'occSchNor','occSchSou','occSchEas','occSchWes']
+
+		# energy variables used to calculate reward
+		self.power_variables = ['res.PHea', 'res.PCooSen', 'res.PCooLat']
+		self.energy_lb = kwargs['energy_lb']
+		self.energy_ub = kwargs['energy_ub']
+		# * Here 'res.PCooSen','res.PCooLat' will be negative so we have to negate the values *
+		self.power_sign = [1.0, -1.0, -1.0]
+
+		# create the internal agent to handle unused actions for the testbed
+		self.internal_agent_created = False
+		if len(self.usr_axn_idx)<self._num_actions:  # internal agent needed
+			self.internal_agent = InternalAgent_testbed_v2(self.usr_axn_idx, self._num_actions)
+			self.internal_agent_action_idx = self.internal_agent.get_internal_agent_action_idx()
+			self.internal_agent_created = True
+		elif len(self.usr_axn_idx)==self._num_actions:  # internal agent not needed
+			pass
+		else:
+			raise IndexError
+
+		# create the scaler dictionary from above information
+		scaler_dict = {}
+		var_names = kwargs['observed_variables'] + kwargs['action_variables'] + self.power_variables
+		var_lb = kwargs['observation_space_bounds'][0] + kwargs['stpt_vals_lb'] + self.energy_lb
+		var_ub = kwargs['observation_space_bounds'][1] + kwargs['stpt_vals_ub'] + self.energy_ub
+		for key,var_lb,var_ub in zip(var_names, var_lb, var_ub):
+			scaler_dict[key] = {'min':var_lb,'max':var_ub}
+		self.scaler : dataframescaler = dataframescaler(scaler_dict)
+
+		self.r_energy_wt, self.r_comfort_wt = kwargs['r_energy_wt'], kwargs['r_comfort_wt']
+		# zone temperature var names ;should we switch to room temps? Done!
+		self.zone_temp_vars : List[str] = ['TRooAir.y5[1]','TRooAir.y2[1]','TRooAir.y4[1]',
+											'TRooAir.y3[1]','TRooAir.y1[1]']
+		# zone temperature cooling and heating bounds
+		self.zone_temp_cool = ['conVAVCor.TRooCooSet','conVAVNor.TRooCooSet','conVAVSou.TRooCooSet',
+								'conVAVEas.TRooCooSet','conVAVWes.TRooCooSet']
+		self.zone_temp_heat = ['conVAVCor.TRooHeaSet','conVAVNor.TRooHeaSet','conVAVSou.TRooHeaSet',
+								'conVAVEas.TRooHeaSet','conVAVWes.TRooHeaSet']
+
+		# reset the fmu to appropriate time point to get correct values; no need to set global_fmu_reset
+		_ = self.reset()
+
+	def create_gym_obs_axn_space(self, usr_obs, usr_axn, obs, axn, obs_bounds, axn_bounds):
+
+		self.usr_axn_idx_unsrtd = [axn.index(name) for name in usr_axn]
+		self.usr_axn_idx = sorted(self.usr_axn_idx_unsrtd)
+		self.usr_obs_idx_unsrtd = [obs.index(name) for name in usr_obs]
+		self.usr_obs_idx = sorted(self.usr_obs_idx_unsrtd)
+
+		#  observation space bounds
+		if len(self.usr_obs_idx)!=0:  # not empty
+			self.usr_obs_space_bounds = [[obs_bounds[0][idx] for idx in self.usr_obs_idx],
+									 	 [obs_bounds[1][idx] for idx in self.usr_obs_idx]]
+			assert len(self.usr_obs_space_bounds)==2, "Exactly two lists are needed: low and high bounds"
+			self.observation_space = spaces.Box(low = np.array(self.usr_obs_space_bounds[0]),
+												high = np.array(self.usr_obs_space_bounds[1]),
+												dtype = np.float32)
+			self.no_usr_obs = False
+		else:
+			self.no_usr_obs = True
+
+		# action space bounds
+		if len(self.usr_axn_idx)!=0:  # not empty
+			self.usr_axn_space_bounds = [[axn_bounds[0][idx] for idx in self.usr_axn_idx],
+									     [axn_bounds[1][idx] for idx in self.usr_axn_idx]]
+
+			assert len(self.usr_axn_space_bounds)==2, "Exactly two lists are needed: low and high bounds"
+			assert all([actlow == -1*acthigh for actlow,
+					acthigh in zip(self.usr_axn_space_bounds[0],
+					 self.usr_axn_space_bounds[1])]), "Action Space bounds have to be symmetric"
+			self.action_space = spaces.Box(low = np.array(self.usr_axn_space_bounds[0]),
+										high = np.array(self.usr_axn_space_bounds[1]),
+										dtype = np.float32)
+			self.no_usr_action = False
+		else:
+			self.no_usr_action = True
+
+	# Process the action
+	def action_processor(self, a):
+		"""
+		Receives the positive / negative change in the actions supplied by the user agent and
+		calculates the current values of those action idx. Rest axn idx vals are provided by
+		the internal testbed agent.
+		"""
+		# get final action values  for user agent
+		if not self.no_usr_action:
+			self.stpt_vals[self.usr_axn_idx] += a
+			self.stpt_vals[self.usr_axn_idx] = \
+							np.clip(self.stpt_vals[self.usr_axn_idx], 
+									self.stpt_vals_lb[self.usr_axn_idx], 
+									self.stpt_vals_ub[self.usr_axn_idx])
+
+		# get True False status of each zone based on current fmu time and  tnextOcc
+		self.zone_occupancy_status, self.tNexOccAll = simulate_zone_occupancy(self.start_time)
+		# get final action values for internal agent if needed
+		if self.internal_agent_created:
+			internal_axns = self.internal_agent.predict(np.array(self.zone_occupancy_status))
+			self.stpt_vals[self.internal_agent_action_idx] = internal_axns
+
+		return self.stpt_vals
+
+	# Calculate the observations for the next state of the system
+	# this function does not need obs since it stores obs internally in fmu
+	def state_transition(self, _, action):
+		"""
+		* We have to modify the base state_transition function here since we are
+		  going to pass additional input in the form of occupancy here.
+		"""
+
+		# check input type
+		if isinstance(action,np.ndarray):
+			action = list(action)
+		elif isinstance(action, list):
+			pass
+		else:
+			raise TypeError
+
+		# set input to the action variables
+		self.fmu.set(variable_name=self.act_vars, value=action)
+		# set the input to zone occupancy variables
+		self.fmu.set(variable_name=self.zone_occupancy_vars, value=self.zone_occupancy_status)
+		# set the input to tnextOcc variable
+		self.fmu.set(variable_name=['tNexOccAll'], value=self.tNexOccAll)
+		# simulate the system
+		self.simulation_status = self.fmu.do_step(current_t = self.start_time,
+								step_size = self.step_size, new_step=True)
+		if self.simulation_status!=0: 
+			print("Something wrong with the Simulation: {}".format(self.simulation_status))
+		# get the observation variables
+		obs_next : list = [i[0] for i in self.fmu.get(self.obs_vars)]
+
+		return np.array(obs_next)

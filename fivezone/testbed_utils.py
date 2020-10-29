@@ -1,5 +1,5 @@
 """
-This script contains utility functions for alumni hall related processing
+This script contains utility functions for testbed related processing
 """
 
 """
@@ -10,7 +10,7 @@ import os
 from typing import Union
 import numpy as np
 import pandas as pd
-
+from datetime import datetime, timedelta
 
 # sources of data for which processing can be done
 DATASOURCE = ['BdX']
@@ -121,3 +121,28 @@ def rl_perf_save(test_perf_log_list: list, log_dir: str, save_as: str = 'csv', h
 					f.writelines("%s\n" % j for j in value)
 					f.close()
 				header = False
+
+
+
+# get zone occupancy pattern based on time
+def simulate_zone_occupancy(step_time):
+	# Should return two lists
+	"""
+	Considers the current time point and generates whether the next step of the simulation should have occupancy True or False for the following zones in order
+	Cor, Nor, Sou, Eas, Wes
+	here days of week are numbered starting from Monday=0 to Sunday=6
+	here hours of day are numbered starting from 12:00:00AM=0 to 23:59:59=23
+	"""
+	ctime = secs2datetime(step_time)
+	hour, weekday = ctime.hour, ctime.weekday()
+
+	# Set the default and extraneous rules
+
+	raise NotImplementedError
+
+def secs2datetime(x):
+	"""
+	converts time in seconds to datetime.datetime with a certain base_date
+	"""
+	base_date = datetime(2020, 1, 1)
+	return base_date + timedelta(seconds=x)
