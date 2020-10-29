@@ -137,8 +137,14 @@ def simulate_zone_occupancy(step_time):
 	hour, weekday = ctime.hour, ctime.weekday()
 
 	# Set the default and extraneous rules
+	if 6<hour<19:
+		occ_list = [True,True,True,True,True]
+		tNexOccAll = [0.0]
+	else:
+		occ_list = [False,False,False,False,False]
+		tNexOccAll = [86400.0]
 
-	raise NotImplementedError
+	return occ_list, tNexOccAll
 
 def secs2datetime(x):
 	"""
