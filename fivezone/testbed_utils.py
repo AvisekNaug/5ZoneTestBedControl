@@ -135,7 +135,7 @@ def simulate_zone_occupancy(step_time):
 	here hours of day are numbered starting from 12:00:00AM=0 to 23:59:59=23
 	"""
 	ctime = secs2datetime(step_time)
-	hour, weekday = ctime.hour, ctime.weekday()
+	hour, _ = ctime.hour, ctime.weekday()
 
 	# Set the default and extraneous rules
 	if 6<hour<19:
@@ -171,7 +171,7 @@ def simulate_internal_load(step_time):
 	want to simulate the internal gain load.
 	"""
 	ctime = secs2datetime(step_time)
-	hour, weekday = ctime.hour, ctime.weekday()
+	hour, _ = ctime.hour, ctime.weekday()
 
 	# create the default case from the lbnl website
 	xp = [   0,    8,   9,  12,  12,  13, 13, 17,  19,   24]
