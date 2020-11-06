@@ -11,6 +11,7 @@ from typing import Union
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
+import random
 
 # sources of data for which processing can be done
 DATASOURCE = ['BdX']
@@ -138,7 +139,7 @@ def simulate_zone_occupancy(step_time):
 
 	# Set the default and extraneous rules
 	if 6<hour<19:
-		occ_list = [True,True,True,True,True]
+		occ_list = [True,random.random() <= 0.5,True,True,True]
 		tNexOccAll = [0.0]
 	else:
 		occ_list = [False,False,False,False,False]
@@ -146,9 +147,38 @@ def simulate_zone_occupancy(step_time):
 
 	return occ_list, tNexOccAll
 
+
+
+# convert seconds from beginning of a base date to a datetime.datetime type
 def secs2datetime(x):
 	"""
 	converts time in seconds to datetime.datetime with a certain base_date
 	"""
 	base_date = datetime(2020, 1, 1)
 	return base_date + timedelta(seconds=x)
+
+
+
+# get zone internal load pattern based on time of day
+def simulate_internal_load(step_time):
+	"""
+	It will accept the current time of the day and return the zone based internal
+	gain/load. This method implements the default rules described here
+	(https://obc.lbl.gov/specification/example.html#internal-loads)
+	and coded(https://simulationresearch.lbl.gov/modelica/releases/latest/help/
+	Buildings_Examples_VAVReheat_ThermalZones.html#Buildings.Examples.VAVReheat.ThermalZones.Floor)
+	The end user would have to change this or implement their own method depending on how they
+	want to simulate the internal gain load.
+	"""
+	ctime = secs2datetime(step_time)
+	hour, weekday = ctime.hour, ctime.weekday()
+
+	# create the default case from the lbnl website
+	xp = [   0,    8,   9,  12,  12,  13, 13, 17,  19,   24]
+	fp = [0.05, 0.05, 0.9, 0.9, 0.8, 0.8,  1,  1, 0.1, 0.05]
+	intGaiFra = [np.interp(hour, xp=xp, fp=fp)]*5
+
+	return intGaiFra
+
+
+	

@@ -13,7 +13,7 @@ import numpy as np
 from notify_run import Notify
 notify = Notify()
 
-from testbed_env import testbed_v0, testbed_v1, testbed_v3
+from testbed_env import testbed_v0, testbed_v1, testbed_v3, testbed_v4
 from agents import RandomAgent, PerformanceMetrics
 from testbed_utils import rl_perf_save, dataframescaler
 
@@ -271,6 +271,69 @@ def testbed_v3_random_agent(args):
 		exit(-1)		
 
 
+def testbed_v4_random_agent(args):
+	try:
+		settings = get_settings(args.config_path, args.config_section)
+		# create logger
+		log = create_logger(settings)
+		# USER CAN CREATE AGENT ANYWAY THEY WANT
+		# example: create agent
+		settings['action_idx_by_user'] = [settings['action_variables'].index(name) for name in settings['user_actions']]
+		
+		agent = RandomAgent(lb=np.array(settings['action_space_bounds'][0])[settings									['action_idx_by_user']], \
+							ub=np.array(settings['action_space_bounds'][1])[settings['action_idx_by_user']])
+
+		log.info('Agent Created')
+		# set up the environment
+		settings['episode_days'] = args.episode_days
+		env = testbed_v4(**settings)
+		log.info('Environment Created')
+		# get initial state of the system
+		obs = env.reset()
+		log.info('Agent Resets environment')
+		# logger for deployment performance
+		performance_logger = PerformanceMetrics()
+		# create new empty metric dictionary
+		performance_logger.on_episode_begin()	
+
+		# run the prediction for t timesteps
+		s_time = time.time()
+		for iter in range(args.time_steps):
+			log.info('Iteration {} of {}'.format(iter+1,args.time_steps))
+			# get action
+			action = agent.predict(obs)
+			log.info('Action Taken = {}'.format(action))
+			# send action to environment
+			time_start = time.time()
+			obs, _, done, info = env.step(action)
+			time_end = time.time()
+			# log.info('Observation received = {}'.format(obs))
+			log.info('Took {:.2f} s to complete the simulation iteration {} of {}'.format(time_end-time_start, iter+1, args.time_steps))
+			performance_logger.on_step_end(info=info)
+			if done:
+				# add info to metric list
+				performance_logger.on_episode_end()
+				# create new empty metric dictionary
+				performance_logger.on_episode_begin()
+				obs = env.reset()
+				log.info('Agent Resets environment')
+		e_time = time.time()
+		log.info('Took {:.2f} s to complete the simulation for {} iterations'.format(e_time-s_time, args.time_steps))
+		# add info to metric list in case time steps lower than episode length
+		performance_logger.on_episode_end()
+		# save the performance logs
+		rl_perf_save(test_perf_log_list=[performance_logger], log_dir=args.output_dir,
+										save_as= 'csv', header=True)
+		if args.notify:
+			notify.send('Main Thread: Script Ended Without Error')										
+	except Exception as e:
+		log.critical('Main Thread: Script stopped due to:\n{}'.format(e))
+		log.debug(e, exc_info=True)
+		if args.notify:
+			err_pt = settings['fmu_start_time_step'] + iter
+			notify.send('Main Thread: Script stopped at at iteration {} due to \n {}'.format(err_pt,e))
+		exit(-1)
+
 
 if __name__ == '__main__':
 	args = parser.parse_args()
@@ -281,3 +344,5 @@ if __name__ == '__main__':
 			testbed_v1_random_agent(args)
 		elif args.testbed=='testbed_v3':
 			testbed_v3_random_agent(args)
+		elif args.testbed=='testbed_v4':
+			testbed_v4_random_agent(args)

@@ -62,7 +62,7 @@ class InternalAgent_testbed_v1(InternalAgent):
 		else:
 			return self.default_action_vals_unoccupied[self.internal_agent_action_idx]
 
-class InternalAgent_testbed_v2(InternalAgent):
+class InternalAgent_testbed_v3(InternalAgent):
 	"""
 	An internal agent for the testbed_v2 to take care of actions not specified by the user. 
 	Based on **occupancy condition**, it will choose appropriate temperature values for the rooms

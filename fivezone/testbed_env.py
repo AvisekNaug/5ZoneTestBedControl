@@ -14,8 +14,8 @@ from gym import spaces
 from pyfmi import load_fmu
 from pyfmi.fmi import FMUModelCS2, FMUModelCS1  # pylint: disable=no-name-in-module
 
-from agents import InternalAgent_testbed_v1, InternalAgent_testbed_v2
-from testbed_utils import dataframescaler, simulate_zone_occupancy
+from agents import InternalAgent_testbed_v1, InternalAgent_testbed_v3
+from testbed_utils import dataframescaler, simulate_zone_occupancy, simulate_internal_load
 
 # base testbed class
 class testbed_base(gym.Env):
@@ -62,7 +62,8 @@ class testbed_base(gym.Env):
 		# assert all_vars_present, "There are missing variables in the FMU:{}".format(absent_vars)
 		# load the fmu
 		self._load_fmu(**{'fmu':fmu_path, 'kind':'CS'})
-		
+
+	
 	def create_gym_obs_axn_space(self, usr_obs, usr_axn, obs, axn, obs_bounds, axn_bounds):
 
 		self.usr_axn_idx_unsrtd = [axn.index(name) for name in usr_axn]
@@ -97,6 +98,7 @@ class testbed_base(gym.Env):
 			self.no_usr_action = False
 		else:
 			self.no_usr_action = True
+
 
 	def re_init(self, *args, **kwargs):
 		"""
@@ -174,6 +176,7 @@ class testbed_base(gym.Env):
 			usr_actions = a[[self.usr_axn_idx_unsrtd.index(i) for i in self.usr_axn_idx]]  # sort
 		return self.action_processor(usr_actions)
 	
+
 	# Process the action
 	def action_processor(self, a):
 		"""
@@ -182,8 +185,7 @@ class testbed_base(gym.Env):
 		raise NotImplementedError
 
 
-	# Calculate the observations for the next state of the system
-	# this function does not need obs since it stores obs internally in fmu
+	# Calculate the observations for the next state of the system this function does not need obs since it stores obs internally in fmu 
 	def state_transition(self, _, action):
 
 		# check input type
@@ -234,7 +236,8 @@ class testbed_base(gym.Env):
 	def _obs_processor(self, obs):
 		usr_obs = obs[self.usr_obs_idx_unsrtd]  # chose the obs user wants in their prefererd order
 		return self.obs_processor(usr_obs)
-	
+
+
 	# Process the observation
 	def obs_processor(self, obs):
 
@@ -250,7 +253,6 @@ class testbed_base(gym.Env):
 		else:
 			assert kwargs['kind']=='CS', 'Models can only be loaded in Co-simulation model, use kind : "CS"'
 		self._load_fmu(**kwargs)
-
 
 
 	# internal method to load fmu
@@ -276,7 +278,6 @@ class testbed_base(gym.Env):
 		with open(fmu_vars_path, 'r') as f: 
 			self.fmu_var_names = jsonload(f).keys()
 		f.close()
-
 
 
 
@@ -668,13 +669,17 @@ class testbed_v3(testbed_base):
 	  - Air Handling Unit Heating Temperature Setpoint
 	  - Heating Temperature Setpoint for Each Zone 
 	  - Cooling Temperature Setpoint for Each Zone
+	  - Non-user controlled actions are automatically handled by the Internal Agent for this
+	  testbed
 
 	* Observations:
-	  - Any fmu variable can be returned as an observation. Depending on user requirement 0-1 scale the observations being returned using custom user methods.
+	  - Any fmu variable can be returned as an observation. Depending on user requirement
+	   0-1 scale the observations being returned using custom user methods.
 
 	* Inputs:
 	  - Weather data: they are already included in the testbed
-	  - They should be provided by the user
+	  - Zone based True/False occupancy: They should be provided by the user 
+	  (eg using simulate_zone_occupancy method)
 
 	* Reward 
 	  - Lower energy consumption
@@ -708,7 +713,7 @@ class testbed_v3(testbed_base):
 		# create the internal agent to handle unused actions for the testbed
 		self.internal_agent_created = False
 		if len(self.usr_axn_idx)<self._num_actions:  # internal agent needed
-			self.internal_agent = InternalAgent_testbed_v2(self.usr_axn_idx, self._num_actions)
+			self.internal_agent = InternalAgent_testbed_v3(self.usr_axn_idx, self._num_actions)
 			self.internal_agent_action_idx = self.internal_agent.get_internal_agent_action_idx()
 			self.internal_agent_created = True
 		elif len(self.usr_axn_idx)==self._num_actions:  # internal agent not needed
@@ -817,10 +822,10 @@ class testbed_v3(testbed_base):
 		power_values = np.array([i[0]*j for i,j in zip(self.fmu.get(self.power_variables),
 														self.power_sign)])
 		# scale the power values
-		power_values = self.scaler.minmax_scale(power_values, input_columns= self.power_variables,
+		power_values_scaled = self.scaler.minmax_scale(power_values, input_columns= self.power_variables,
 											 df_2scale_columns= self.power_variables)
 		# reward incentivizes lower energy; reward lower energy
-		r_energy = -1.0*np.sum(power_values)
+		r_energy = -1.0*np.sum(power_values_scaled)
 
 		'''comfort component of the reward: we only penalize deviation when there is occupancy'''
 		# see if zone is occupied
@@ -892,3 +897,256 @@ class testbed_v3(testbed_base):
 		obs_next : list = [i[0] for i in self.fmu.get(self.obs_vars)]
 
 		return np.array(obs_next)
+
+
+
+# Example testbed where we can control AHU heating coil and terminal cooling+heating coil set points. We can also modify the occupancy variables individually
+class testbed_v4(testbed_base):
+	"""
+	Inherits the base testbed base class to interact with an RL agent using gym interface. The
+	"create_gym_obs_axn_space" method has to be implemented since it will use a gym interface
+	This version has the following characteristics:
+
+	* Actions: 'delta changes' (limited to [+range,-range]) for the following:
+	  - Air Handling Unit Heating Temperature Setpoint
+	  - Heating Temperature Setpoint for Each Zone 
+	  - Cooling Temperature Setpoint for Each Zone
+	  - Non-user controlled actions are automatically handled by the Internal Agent for this
+	  testbed
+
+	* Observations:
+	  - Any fmu variable can be returned as an observation. Depending on user requirement
+	   0-1 scale the observations being returned using custom user created methods.
+
+	* Inputs:
+	  - Weather data: they are already included in the testbed/fmu
+	  - Zone based True/False occupancy: They should be provided by the user at every time instant.
+	  (eg simulate_zone_occupancy method used here located in testbed_utils)	  
+	  - Zone based Internal Load in range(0,1): They should be provided by the user at every time instant
+
+	* Reward 
+	  - Lower energy consumption
+	  	(calculated using 0-1 scaled values)
+	  - Keep Temperature within bounds most of the time for each zone
+	  	(calculated using 0-1 scaled values)
+
+	"""
+	def __init__(self, *args, **kwargs):
+		super().__init__(*args, **kwargs)
+
+		self.create_gym_obs_axn_space(self.user_observations, self.user_actions,
+									  self.obs_vars, self.act_vars,
+									  self.obs_space_bounds, self.action_space_bounds)
+
+		self._num_actions = len(kwargs['initial_stpt_vals'])
+		self.stpt_vals = np.array(kwargs['initial_stpt_vals'])
+		self.stpt_vals_ub = np.array(kwargs['stpt_vals_ub'])
+		self.stpt_vals_lb = np.array(kwargs['stpt_vals_lb'])
+
+		# zone occupancy variables
+		self.zone_occupancy_vars = ['occSchCor', 'occSchNor','occSchSou','occSchEas','occSchWes']
+		# zone internal heat gain variables
+		self.zone_internal_heat_gain_vars = ['pCorintGaiFra','pNorintGaiFra','pSouintGaiFra',
+											'pEasintGaiFra','pWesintGaiFra']
+
+		# energy variables used to calculate reward
+		self.power_variables = ['res.PHea', 'res.PCooSen', 'res.PCooLat']
+		self.energy_lb = kwargs['energy_lb']
+		self.energy_ub = kwargs['energy_ub']
+		# * Here 'res.PCooSen','res.PCooLat' will be negative so we have to negate the values *
+		self.power_sign = [1.0, -1.0, -1.0]
+
+		# create the internal agent to handle unused actions for the testbed
+		self.internal_agent_created = False
+		if len(self.usr_axn_idx)<self._num_actions:  # internal agent needed
+			self.internal_agent = InternalAgent_testbed_v3(self.usr_axn_idx, self._num_actions)
+			self.internal_agent_action_idx = self.internal_agent.get_internal_agent_action_idx()
+			self.internal_agent_created = True
+		elif len(self.usr_axn_idx)==self._num_actions:  # internal agent not needed
+			pass
+		else:
+			raise IndexError
+
+		# create the scaler dictionary from above information
+		scaler_dict = {}
+		var_names = kwargs['observed_variables'] + kwargs['action_variables'] + self.power_variables
+		var_lb = kwargs['observation_space_bounds'][0] + kwargs['stpt_vals_lb'] + self.energy_lb
+		var_ub = kwargs['observation_space_bounds'][1] + kwargs['stpt_vals_ub'] + self.energy_ub
+		for key,var_lb,var_ub in zip(var_names, var_lb, var_ub):
+			scaler_dict[key] = {'min':var_lb,'max':var_ub}
+		self.scaler : dataframescaler = dataframescaler(scaler_dict)
+
+		self.r_energy_wt, self.r_comfort_wt = kwargs['r_energy_wt'], kwargs['r_comfort_wt']
+		# zone temperature var names ;should we switch to room temps? Done!
+		self.zone_temp_vars : List[str] = ['TRooAir.y5[1]','TRooAir.y2[1]','TRooAir.y4[1]',
+											'TRooAir.y3[1]','TRooAir.y1[1]']
+		# zone temperature cooling and heating bounds
+		self.zone_temp_cool = ['conVAVCor.TRooCooSet','conVAVNor.TRooCooSet','conVAVSou.TRooCooSet',
+								'conVAVEas.TRooCooSet','conVAVWes.TRooCooSet']
+		self.zone_temp_heat = ['conVAVCor.TRooHeaSet','conVAVNor.TRooHeaSet','conVAVSou.TRooHeaSet',
+								'conVAVEas.TRooHeaSet','conVAVWes.TRooHeaSet']
+
+		# reset the fmu to appropriate time point to get correct values; no need to set global_fmu_reset
+		_ = self.reset()
+
+
+	def create_gym_obs_axn_space(self, usr_obs, usr_axn, obs, axn, obs_bounds, axn_bounds):
+
+		self.usr_axn_idx_unsrtd = [axn.index(name) for name in usr_axn]
+		self.usr_axn_idx = sorted(self.usr_axn_idx_unsrtd)
+		self.usr_obs_idx_unsrtd = [obs.index(name) for name in usr_obs]
+		self.usr_obs_idx = sorted(self.usr_obs_idx_unsrtd)
+
+		#  observation space bounds
+		if len(self.usr_obs_idx)!=0:  # not empty
+			self.usr_obs_space_bounds = [[obs_bounds[0][idx] for idx in self.usr_obs_idx],
+									 	 [obs_bounds[1][idx] for idx in self.usr_obs_idx]]
+			assert len(self.usr_obs_space_bounds)==2, "Exactly two lists are needed: low and high bounds"
+			self.observation_space = spaces.Box(low = np.array(self.usr_obs_space_bounds[0]),
+												high = np.array(self.usr_obs_space_bounds[1]),
+												dtype = np.float32)
+			self.no_usr_obs = False
+		else:
+			self.no_usr_obs = True
+
+		# action space bounds
+		if len(self.usr_axn_idx)!=0:  # not empty
+			self.usr_axn_space_bounds = [[axn_bounds[0][idx] for idx in self.usr_axn_idx],
+									     [axn_bounds[1][idx] for idx in self.usr_axn_idx]]
+
+			assert len(self.usr_axn_space_bounds)==2, "Exactly two lists are needed: low and high bounds"
+			assert all([actlow == -1*acthigh for actlow,
+					acthigh in zip(self.usr_axn_space_bounds[0],
+					 self.usr_axn_space_bounds[1])]), "Action Space bounds have to be symmetric"
+			self.action_space = spaces.Box(low = np.array(self.usr_axn_space_bounds[0]),
+										high = np.array(self.usr_axn_space_bounds[1]),
+										dtype = np.float32)
+			self.no_usr_action = False
+		else:
+			self.no_usr_action = True
+
+	# Process the action
+	def action_processor(self, a):
+		"""
+		Receives the positive / negative change in the actions supplied by the user agent and
+		calculates the current values of those action idx. Rest axn idx vals are provided by
+		the internal testbed agent.
+		"""
+		# get final action values  for user agent
+		if not self.no_usr_action:
+			self.stpt_vals[self.usr_axn_idx] += a
+			self.stpt_vals[self.usr_axn_idx] = \
+							np.clip(self.stpt_vals[self.usr_axn_idx], 
+									self.stpt_vals_lb[self.usr_axn_idx], 
+									self.stpt_vals_ub[self.usr_axn_idx])
+
+		# get True False status of each zone based on current fmu time and  tnextOcc
+		self.zone_occupancy_status, self.tNexOccAll = simulate_zone_occupancy(self.start_time)
+		# get internal heat gain values for each zone
+		self.zone_internal_heat_gain = simulate_internal_load(self.start_time)
+		# get final action values for internal agent if needed
+		if self.internal_agent_created:
+			internal_axns = self.internal_agent.predict(np.array(self.zone_occupancy_status))
+			self.stpt_vals[self.internal_agent_action_idx] = internal_axns
+
+		return self.stpt_vals
+
+	# Process the observation
+	def obs_processor(self, obs : np.array):
+		"""
+		Scale the observations to 0-1 range 
+		"""
+		return self.scaler.minmax_scale(obs, input_columns= self.user_observations,
+											 df_2scale_columns= self.user_observations)
+	
+	# calculate reward and other info
+	def calculate_reward_and_info(self, obs, action, obs_next):
+		"""
+		Here we will get the power consumsed over the last 1 hour- initially use only this
+		Also use the deviation between the room temperature and set point during day time
+		"""
+		
+		'''energy component of the reward '''
+		power_values = np.array([i[0]*j for i,j in zip(self.fmu.get(self.power_variables),
+														self.power_sign)])
+		# scale the power values
+		power_values_scaled = self.scaler.minmax_scale(power_values, input_columns= self.power_variables,
+											 df_2scale_columns= self.power_variables)
+		# reward incentivizes lower energy; reward lower energy
+		r_energy = -1.0*np.sum(power_values_scaled)
+
+		'''comfort component of the reward: we only penalize deviation when there is occupancy'''
+		# see if zone is occupied
+		occupancy_status : int = int(self.fmu.get('occSch.occupied')[0])
+		# zone temperatures
+		zone_temp : np.array = np.array([i[0] for i in self.fmu.get(self.zone_temp_vars)])
+		# check whether zone_temp is within the range per zone
+
+		# temp ub
+		self.temp_ub : np.array = np.array([i[0] for i in self.fmu.get(self.zone_temp_cool)])
+		# temp lb
+		self.temp_lb : np.array = np.array([i[0] for i in self.fmu.get(self.zone_temp_heat)])
+
+		temp_within_range : np.array = (zone_temp>self.temp_lb) & (zone_temp<self.temp_ub)
+		r_comfort = occupancy_status*np.sum(temp_within_range)
+
+		# scale to 0-1 using reasonable bounds(0,5: since there are 5 zones at most)
+		r_comfort = r_comfort/5
+
+		reward = self.r_energy_wt*r_energy +  self.r_comfort_wt*r_comfort
+
+		info = {}
+		# add time
+		info['time'] = self.fmu.time
+		info['reward_energy'] = r_energy
+		info['reward_comfort'] = r_comfort
+		for name,val in zip(self.act_vars, action):
+			info[name] = val
+		for name,val in zip(self.power_variables, power_values):
+			info[name] = val
+		for name,val in zip(self.zone_temp_vars, zone_temp):
+			info[name] = val
+		for name, val in zip(self.user_observations, obs):
+			info[name] = val
+		for name, val in zip(self.zone_occupancy_vars, self.zone_occupancy_status):
+			info[name] = val
+		info['tNexOccAll'] = self.tNexOccAll
+		for name, val in zip(self.zone_internal_heat_gain_vars, self.zone_internal_heat_gain):
+			info[name] = val
+		
+		return reward, info
+	
+	# Calculate the observations for the next state of the system
+	# this function does not need obs since it stores obs internally in fmu
+	def state_transition(self, _, action):
+		"""
+		* We have to modify the base state_transition function here since we are
+		  going to pass additional input in the form of occupancy here.
+		"""
+
+		# check input type
+		if isinstance(action,np.ndarray):
+			action = list(action)
+		elif isinstance(action, list):
+			pass
+		else:
+			raise TypeError
+
+		# set input to the action variables
+		self.fmu.set(variable_name=self.act_vars, value=action)
+		# set the input to zone occupancy variables
+		self.fmu.set(variable_name=self.zone_occupancy_vars, value=self.zone_occupancy_status)
+		# set the input to tnextOcc variable
+		self.fmu.set(variable_name=['tNexOccAll'], value=self.tNexOccAll)
+		# set the input to internal heat gain values
+		self.fmu.set(variable_name=self.zone_internal_heat_gain_vars, value=self.zone_internal_heat_gain)
+		# simulate the system
+		self.simulation_status = self.fmu.do_step(current_t = self.start_time,
+								step_size = self.step_size, new_step=True)
+		if self.simulation_status!=0: 
+			print("Something wrong with the Simulation: {}".format(self.simulation_status))
+		# get the observation variables
+		obs_next : list = [i[0] for i in self.fmu.get(self.obs_vars)]
+
+		return np.array(obs_next)
+
