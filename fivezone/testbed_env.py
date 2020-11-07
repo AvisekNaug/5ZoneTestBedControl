@@ -15,7 +15,7 @@ from pyfmi import load_fmu
 from pyfmi.fmi import FMUModelCS2, FMUModelCS1  # pylint: disable=no-name-in-module
 
 from agents import InternalAgent_testbed_v1, InternalAgent_testbed_v3
-from testbed_utils import dataframescaler, simulate_zone_occupancy, simulate_internal_load
+from testbed_utils import dataframescaler, simulate_zone_occupancy_default, simulate_internal_load_default
 
 # base testbed class
 class testbed_base(gym.Env):
@@ -795,7 +795,7 @@ class testbed_v3(testbed_base):
 									self.stpt_vals_ub[self.usr_axn_idx])
 
 		# get True False status of each zone based on current fmu time and  tnextOcc
-		self.zone_occupancy_status, self.tNexOccAll = simulate_zone_occupancy(self.start_time)
+		self.zone_occupancy_status, self.tNexOccAll = simulate_zone_occupancy_default(self.start_time)
 		# get final action values for internal agent if needed
 		if self.internal_agent_created:
 			internal_axns = self.internal_agent.predict(np.array(self.zone_occupancy_status))
@@ -1041,9 +1041,9 @@ class testbed_v4(testbed_base):
 									self.stpt_vals_ub[self.usr_axn_idx])
 
 		# get True False status of each zone based on current fmu time and  tnextOcc
-		self.zone_occupancy_status, self.tNexOccAll = simulate_zone_occupancy(self.start_time)
+		self.zone_occupancy_status, self.tNexOccAll = simulate_zone_occupancy_default(self.start_time)
 		# get internal heat gain values for each zone
-		self.zone_internal_heat_gain = simulate_internal_load(self.start_time)
+		self.zone_internal_heat_gain = simulate_internal_load_default(self.start_time,self.zone_occupancy_status)
 		# get final action values for internal agent if needed
 		if self.internal_agent_created:
 			internal_axns = self.internal_agent.predict(np.array(self.zone_occupancy_status))
