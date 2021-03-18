@@ -147,7 +147,7 @@ def simulate_zone_occupancy_default(step_time):
 
 	return occ_list, tNexOccAll
 
-def simulate_zone_occupancy(step_time):
+def simulate_zone_occupancy_ns(step_time):
 	# Should return two lists
 	"""
 	Considers the current time point and generates whether the next step of the simulation should have occupancy True or False for the following zones in order
@@ -156,26 +156,49 @@ def simulate_zone_occupancy(step_time):
 	here hours of day are numbered starting from 12:00:00AM=0 to 23:59:59=23
 	"""
 	ctime = secs2datetime(step_time)
-	hour, _ = ctime.hour, ctime.weekday()
+	hour, weekday = ctime.hour, ctime.weekday()
 
 	# Set the default and extraneous rules
-	if 6<hour<19:
+	if (6<=hour<=19) & (weekday!=5) & (weekday!=6):
 		occ_list = [True,True,True,True,True]
 		tNexOccAll = [0.0]
+	elif (19<=hour<=22) & ((weekday==5) | (weekday==6)):  # ns case: event in core+north zones
+		occ_list = [True,True,False,False,False]
+		tNexOccAll = [0.0]
 	else:
-		occ_list = [False,random.random() >= 0.7,False,random.random() >= 0.7,False]
+		occ_list = [True,False,False,False,False]
 		tNexOccAll = [86400.0]
 
 	return occ_list, tNexOccAll
 
+def simulate_zone_occupancy_ns2(step_time):
+	# Should return two lists
+	"""
+	Considers the current time point and generates whether the next step of the simulation should have occupancy True or False for the following zones in order
+	Cor, Nor, Sou, Eas, Wes
+	here days of week are numbered starting from Monday=0 to Sunday=6
+	here hours of day are numbered starting from 12:00:00AM=0 to 23:59:59=23
+	"""
+	ctime = secs2datetime(step_time)
+	hour, weekday = ctime.hour, ctime.weekday()
+	_, weekofyear, _ = ctime.isocalendar()
 
-# convert seconds from beginning of a base date to a datetime.datetime type
-def secs2datetime(x):
-	"""
-	converts time in seconds to datetime.datetime with a certain base_date
-	"""
-	base_date = datetime(2020, 1, 1)
-	return base_date + timedelta(seconds=x)
+	# Set the default and extraneous rules
+	if (weekofyear < 15) | (weekofyear > 30) : # normal behavior
+		if (6<=hour<=19) & (weekday!=5) & (weekday!=6):
+			occ_list = [True,True,True,True,True]
+			tNexOccAll = [0.0]
+		else:
+			occ_list = [True,False,False,False,False]
+			tNexOccAll = [86400.0]
+	elif (weekofyear > 20) & (weekofyear < 22):  # continuous occupancy
+		occ_list = [True,True,True,True,True]
+		tNexOccAll = [0.0]
+	else:
+		occ_list = [True,False,False,False,False]
+		tNexOccAll = [86400.0]
+
+	return occ_list, tNexOccAll
 
 
 
@@ -200,9 +223,7 @@ def simulate_internal_load_default(step_time, zone_occupancy_status):
 
 	return intGaiFra
 
-
-
-def simulate_internal_load(step_time, zone_occupancy_status):
+def simulate_internal_load_ns(step_time, zone_occupancy_status):
 	"""
 	It will accept the current time of the day and return the zone based internal
 	gain/load. This method implements the default rules described here
@@ -213,18 +234,75 @@ def simulate_internal_load(step_time, zone_occupancy_status):
 	want to simulate the internal gain load.
 	"""
 	ctime = secs2datetime(step_time)
-	hour, _ = ctime.hour, ctime.weekday()
+	hour, weekday = ctime.hour, ctime.weekday()
 
 	# create the default case from the lbnl website
 	xp = [   0,    8,   9,  12,  12,  13, 13, 17,  19,   24]
 	fp = [0.05, 0.05, 0.9, 0.9, 0.8, 0.8,  1,  1, 0.1, 0.05]
 	intGaiFra = [np.interp(hour, xp=xp, fp=fp)]*5
-	intGaiFra_rand = []
-	for i,j in zip(intGaiFra,zone_occupancy_status):
-		if (i <= 0.1) & (j == True) :
-			intGaiFra_rand.append(i+0.6*np.random.random())  # pylint: disable=no-member
-		else:
-			intGaiFra_rand.append(i)
+
+	# Set the default and extraneous rules
+	if (weekday!=5) & (weekday!=6):  # weekdays default occupancy
+
+		intGaiFra_rand = intGaiFra
+
+	elif (19<=hour<=22) & ((weekday==5) | (weekday==6)):  # ns case: event in core+north zones
+
+		intGaiFra_rand = []
+		for i,j in zip(intGaiFra,zone_occupancy_status):
+			if j == True :
+				intGaiFra_rand.append(np.random.uniform(low=0.8, high=0.95))  # pylint: disable=no-member
+			else:
+				intGaiFra_rand.append(i)
+	else:
+		intGaiFra_rand = [0.05]*5
 
 	return intGaiFra_rand
-	
+
+def simulate_internal_load_ns2(step_time, zone_occupancy_status):
+	"""
+	It will accept the current time of the day and return the zone based internal
+	gain/load. This method implements the default rules described here
+	(https://obc.lbl.gov/specification/example.html#internal-loads)
+	and coded(https://simulationresearch.lbl.gov/modelica/releases/latest/help/
+	Buildings_Examples_VAVReheat_ThermalZones.html#Buildings.Examples.VAVReheat.ThermalZones.Floor)
+	The end user would have to change this or implement their own method depending on how they
+	want to simulate the internal gain load.
+	"""
+	ctime = secs2datetime(step_time)
+	hour, weekday = ctime.hour, ctime.weekday()
+	_, weekofyear, _ = ctime.isocalendar()
+
+	# create the default case from the lbnl website
+	xp = [   0,    8,   9,  12,  12,  13, 13, 17,  19,   24]
+	fp = [0.05, 0.05, 0.9, 0.9, 0.8, 0.8,  1,  1, 0.1, 0.05]
+	intGaiFra = [np.interp(hour, xp=xp, fp=fp)]*5
+
+	# Set the default and extraneous rules
+	if (weekofyear < 15) | (weekofyear > 30) : # normal behavior
+		if (6<=hour<=19) & (weekday!=5) & (weekday!=6):
+			intGaiFra_rand = intGaiFra
+		else:
+			intGaiFra_rand = [0.05]*5
+
+	elif (weekofyear > 20) & (weekofyear < 22):  # continuous occupancy
+		intGaiFra_rand = []
+		for i,j in zip(intGaiFra,zone_occupancy_status):
+			if j == True :
+				intGaiFra_rand.append(np.random.uniform(low=0.8, high=0.95))  # pylint: disable=no-member
+			else:
+				intGaiFra_rand.append(i)
+	else:
+		intGaiFra_rand = [0.05]*5
+		
+
+	return intGaiFra_rand
+
+
+# convert seconds from beginning of a base date to a datetime.datetime type
+def secs2datetime(x):
+	"""
+	converts time in seconds to datetime.datetime with a certain base_date
+	"""
+	base_date = datetime(2020, 1, 1)
+	return base_date + timedelta(seconds=x)
