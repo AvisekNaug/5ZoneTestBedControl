@@ -24,16 +24,19 @@ We created a simple testbed `testbed_v1` where we use `ambient temperature, humi
 
 The example output for testbed_v1 with the controller using a `RandomAgent` and the rest of the variables controlled using a `InternalAgent_testbed_v1` class is shown below.
 ```bash
-(5Zone) $ python fivezone/test_deployment.py -t 25 -d tb1 -b testbed_v1 -s TESTBED_V1
+(5Zone) $ python fivezone/test_deployment.py -t 1000
 ```
+To see the full list of arguments refer to `fivezone/test_deployment.py`
+
+**Quick Tip: In case the user only wants to simulate the testbed to collect data for training, they can use the same above command and data will be collected in a new 'tmp' folder under this repo. However, by default a `BaseExtAgent` agent is used to control the AHU setpoint. In case the user wants to use a different method to control the AHU setpoint, they can create an agent class inside `agents.py` and pass the class name as a string arguement to `--ext_agent` in the above command. But this user created agent class should inherit from the `BaseExtAgent`** 
 
 # Documentation
 
-# Versions of the testbed(Modelica File)
+# Testbed
 We plan to develop multiple versions of the testbed each with more functionalities to allow more control of the testbed.
 
-## 1.0 Testbed_v1
-This is the testbed version [testbed_v1](https://github.com/AvisekNaug/buildings_library_dev/blob/master/Buildings/Examples/VAVReheat/testbed_v1.mo). 
+## 1.0 Testbed
+This is the most updated testbed versions [testbed_v4/5](https://github.com/AvisekNaug/buildings_library_dev/blob/dev_v2/Buildings/Examples/VAVReheat). V4 is for 1hour data and V5 is for 15 min data.
 
 ### Action Space for the testbed:
 
@@ -42,7 +45,7 @@ It allows the **supervisory control only** of the following components of the 5 
 * <u>Heating Coil Temperature Setpoint of the Air Handling Unit</u>. It heats the air whenever the mixed air temperature falls below the setpoint and the building is occupied or in warmup mode. The low level controller is PI based. This means that in the current set up the coils won't turn on when the building is unoccupied (i.e. at night/after office hours. This is an existing feature of the default testbed which we plan to override in a future version.)
 * <u>Heating and Cooling Temperature Setpoints of the individual Terminal Reheat Units/Rooms</u>. There are 5 such units. The low level controller implemented in those units are deadband controllers. They remain turned off as long as the temperature of the room is within those ranges of the set point.
 
-All these variables can be adjusted by the user of the testbed using the supervisory controller of their choice. The user can also choose to control only a certain subste of the controller set points and the rest would be controlled by the Python interface for the testbed using default rules.
+All these variables can be adjusted by the user of the testbed using the supervisory controller of their choice. The user can also choose to control only a certain subset of the controller set points and the rest would be controlled by the Python interface for the testbed using default rules.
 
 ### Observation Space for the testbed:
 
