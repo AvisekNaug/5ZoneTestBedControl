@@ -1,7 +1,7 @@
 import numpy as np
 from datetime import datetime, timedelta
 
-class RandomAgent():
+class BaseExtAgent():
 
 	def __init__(self, lb: np.array, ub: np.array):
 		self.flat_shape = ub.shape[0]
@@ -19,7 +19,7 @@ class RandomAgent():
 
 
 
-class InternalAgent():
+class BaseInternalAgent():
 	"""
 	Use this agent as the base class for selecting actions that are not chosen by the user of the
 	testbed. For example if the testbed needs actions for temperature and valve. but user only decides to choose temeprature actions, this class should be inherited to build an internal agent for the testbed that should take care the valve actions according to some default rule
@@ -62,7 +62,7 @@ class PerformanceMetrics():
 
 
 
-class InternalAgent_1(InternalAgent):
+class InternalAgent_1(BaseInternalAgent):
 	"""
 	An internal agent for the testbed_v2 to take care of actions not specified by the user. 
 	Based on **occupancy condition**, it will choose appropriate temperature values for the rooms

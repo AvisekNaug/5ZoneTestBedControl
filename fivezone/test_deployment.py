@@ -15,7 +15,8 @@ from notify_run import Notify
 notify = Notify()
 
 from testbed_env import testbed_5zone
-from agents import RandomAgent, PerformanceMetrics
+from agents import PerformanceMetrics
+import agents as ag
 from testbed_utils import rl_perf_save, dataframescaler
 
 NOTIFY_ME = False
@@ -30,6 +31,7 @@ DEFAULT_OCC = 'simulate_zone_occupancy_default'
 DEFAULT_LOAD = 'simulate_internal_load_default'
 INTERNAL_AGENT = 'InternalAgent_1'
 DELTA_FN = 'delta_usual'
+EXTERNAL_AGENT = 'BaseExtAgent'
 
 
 # argument parser
@@ -52,7 +54,9 @@ parser.add_argument('-o', '--occupancy_function', type=str, required=False, defa
 parser.add_argument('-i', '--load_function', type=str, required=False, default=DEFAULT_LOAD,
 						help='Function to simulate internal load.')
 parser.add_argument('-g', '--internal_agent', type=str, required=False, default=INTERNAL_AGENT,
-						help='Class to simulate internal agent for non-user-controlled inputs.')											
+						help='Class to simulate internal agent for non-user-controlled inputs.')
+parser.add_argument('-x', '--ext_agent', type=str, required=False, default=EXTERNAL_AGENT,
+						help='Class to simulate internal agent for non-user-controlled inputs.')
 parser.add_argument('-j', '--delta_fn', type=str, required=False, default=DELTA_FN,
 						help='Function to use for delta component of the reward')
 
@@ -105,7 +109,8 @@ def deploy_testbed(args):
 		# example: Create a Random agent(can issue no actions too)
 		settings['action_idx_by_user'] = [settings['action_variables'].index(name) for name in settings['user_actions']]
 		
-		agent = RandomAgent(lb=np.array(settings['action_space_bounds'][0])[settings['action_idx_by_user']], \
+		agent_class = eval('ag.'+args.ext_agent) 
+		agent = agent_class(lb=np.array(settings['action_space_bounds'][0])[settings['action_idx_by_user']], \
 							ub=np.array(settings['action_space_bounds'][1])[settings['action_idx_by_user']])
 
 		log.info('Agent Created')
