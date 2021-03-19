@@ -14,8 +14,8 @@ from gym import spaces
 from pyfmi import load_fmu
 from pyfmi.fmi import FMUModelCS2, FMUModelCS1  # pylint: disable=no-name-in-module
 
-import fivezone.testbed_utils as tu
-import fivezone.agents as ag
+import testbed_utils as tu
+import agents as ag
 
 # base testbed class
 class testbed_base(gym.Env):
@@ -400,6 +400,11 @@ class testbed_5zone(testbed_base):
 				
 				# set inputs and  the action variables
 				self.set_inputs(action)
+
+		# get the observation variables
+		obs_next : list = [i[0] for i in self.fmu.get(self.obs_vars)]
+
+		return np.array(obs_next)
 
 
 

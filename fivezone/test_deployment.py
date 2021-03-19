@@ -83,7 +83,6 @@ def create_logger(settings):
 	return logger
 
 
-
 def get_settings(config_path, config_section):
 
 	cfg = configparser.RawConfigParser()
