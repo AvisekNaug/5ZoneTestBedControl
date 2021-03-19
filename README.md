@@ -20,11 +20,16 @@ conda activate 5Zone
 
 ## Example run
 
-We created a simple testbed `testbed_v1` where we use `ambient temperature, humidity, solar radiation, ahu supply air temperature, zone temperatures` as `observation` variables. `AHU heating temperatue setpoint, South zone heating temperatue setpoint and Noth zone rcooling temperatue setpoint` as the `action` variables. The other actions are adjusted internally by a [default agent with default rules](#Selecting-actions). The `reward` incentivizes less energy consumption, better zone comfort for each zone.
+We created a simple testbed `testbed_v5`. For the purposes of this example, we use `ambient temperature, humidity, solar radiation, ahu supply air temperature, zone temperatures` as `observation` variables. Any other variable can be used as observation variables. The corresponding variables and their bounds should be specified in the config file approrpiately. `AHU  temperatue setpoint` is used as as the `action` variable. The other actions are adjusted internally by a [default agent with default rules](#Selecting-actions). The `reward` incentivizes less energy consumption, better zone comfort for each zone.
 
 The example output for testbed_v1 with the controller using a `RandomAgent` and the rest of the variables controlled using a `InternalAgent_testbed_v1` class is shown below.
 ```bash
 (5Zone) $ python fivezone/test_deployment.py -t 1000
+```
+
+Another example
+```bash
+(5Zone) $ python fivezone/test_deployment.py -t 2000 -i simulate_internal_load_ns2 -j delta_ublb
 ```
 To see the full list of arguments refer to `fivezone/test_deployment.py`
 
@@ -150,4 +155,4 @@ All these methods can be overridden by any class inheriting from this based envi
 
 ## Selecting actions
 
-The testbed provides the user to control a set of actions. The user has to speify which actions they wish to control using their own controller in the `config.cfg` file. The rest of the actions will be handled internally by an internal agent in `src/simple_agents.py`. For the current versions of the testbed the default rules are implemented. If the user wishes to create separate default rules, they can subclass the `InternalAgent` class in `simple_agents.py` to provide their own default rules.
+The testbed provides the user to control a set of actions. The user has to speify which actions they wish to control using their own controller in the `config.cfg` file. The rest of the actions will be handled internally by an internal agent in `src/agents.py`. For the current versions of the testbed the default rules are implemented. If the user wishes to create separate default rules, they can subclass the `BaseInternalAgent` class in `agents.py` to provide their own default rules.
