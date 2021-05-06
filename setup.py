@@ -1,10 +1,10 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='fivezone',
-    version='0.1.0',
+    name='fivezonev2',
+    version='0.0.1',
     packages=find_packages(include=['fivezone']),
     description='Use Testbed as a standalone installation',
     author='Avisek Naug',
-    author_email='avisek.naug@vanderbilt.edu',
+    author_email='avisekvandy@gmail.com',
 )
